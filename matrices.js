@@ -127,8 +127,8 @@ function getAffineTransform(transform) {
   var combinedMatrix = multiplyMatrices(
     translateBackMatrix,
     multiplyMatrices(
-      rotateMatrix,
-      multiplyMatrices(scaleMatrix, translateToOriginMatrix)
+      scaleMatrix,
+      multiplyMatrices(rotateMatrix, translateToOriginMatrix)
     )
   );
 

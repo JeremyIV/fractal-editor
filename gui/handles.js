@@ -8,12 +8,14 @@ let draggedTransformIndex = null;
 
 let selectedTransformIndex = null;
 let rotating = false;
+let rotationReferenceAngle = null;
 let oldRotationValue = null;
 let scaling = false;
 let oldScalingValue = null;
 let scalingReferenceDist = null;
 
 function onScalingMouseDown(e) {
+  e.preventDefault();
   if (scaling) {
     // Reset scaling state
     scaling = false;
@@ -68,8 +70,24 @@ function selectTransform(transformIndex) {
 
   // Add event listener for rotation
   rotationWidget.addEventListener("mousedown", function (e) {
+    e.preventDefault();
     rotating = true;
     oldRotationValue = transforms[transformIndex].degrees_rotation;
+    let origin = transforms[transformIndex].origin;
+    let originHandleCoords = to_handle_coords(origin);
+
+    // Calculate vector from origin to mouse coordinates
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const dx = mouseX - originHandleCoords[0];
+    const dy = mouseY - originHandleCoords[1];
+
+    // Calculate the angle in degrees
+    rotationReferenceAngle = Math.atan2(-dx, -dy) * (180 / Math.PI);
+    console.log(rotationReferenceAngle);
+
     e.stopPropagation(); // Prevent further event propagation
   });
 
@@ -97,9 +115,8 @@ function selectTransform(transformIndex) {
 }
 
 function onMouseDown(e) {
-  // otherwise, if we clicked a handle, select that handle
-  if (scaling) {
-  } else if (e.target.className === "control-handle") {
+  if (e.target.className === "control-handle") {
+    e.preventDefault();
     const transformIndex = e.target.getAttribute("data-transform-index");
     if (transformIndex !== null) {
       draggedTransformIndex = transformIndex;
@@ -145,7 +162,8 @@ function onMouseMove(e) {
     const dy = mouseY - originHandleCoords[1];
 
     // Calculate the angle in degrees
-    const angle = Math.atan2(-dx, -dy) * (180 / Math.PI);
+    const angle =
+      Math.atan2(-dx, -dy) * (180 / Math.PI) - rotationReferenceAngle;
 
     // Set the transform's rotation to this new value
     transforms[selectedTransformIndex].degrees_rotation =

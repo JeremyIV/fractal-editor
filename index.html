@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Multiple Triangles with WebGL</title>
+    <!-- Link to the external CSS file -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="page-container">
+      <canvas id="glCanvas"></canvas>
+      <div id="transform-gui">
+        <div id="transform-forms">
+          <!-- Transform forms will be dynamically inserted here -->
+        </div>
+        <button id="add-transform">+</button>
+      </div>
+    </div>
+
+    <!-- Link to the external JavaScript files -->
+    <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.4.0/dist/gl-matrix-min.js"></script>
+    <script type="module" src="./matrices.js"></script>
+    <script type="module" src="./shaders.js"></script>
+    <script type="module" src="./transforms.js"></script>
+    <script type="module" src="./gui/handles.js"></script>
+    <script type="module" src="./gui/transforms_form.js"></script>
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>

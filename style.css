@@ -1,0 +1,95 @@
+body,
+html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#page-container {
+  display: grid;
+  grid-template-columns: auto 300px; /* Canvas takes auto space, sidebar is 300px */
+  height: 100vh;
+}
+
+#transform-gui {
+  height: 100%;
+  background-color: #f8f8f8;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+#transform-forms {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transform-form {
+  background-color: #fff;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  position: relative;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.form-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-row label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap; /* Prevent the label text from wrapping */
+  margin-right: 5px;
+}
+
+.form-row label:not(:last-child) {
+  flex-grow: 1;
+}
+
+.form-row input[type="number"] {
+  width: 100%; /* Make input take the remaining space */
+  box-sizing: border-box; /* Include padding and border in the input width */
+}
+
+.transform-form .close-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  color: #666;
+}
+
+.transform-form .close-btn:hover {
+  color: #000;
+}
+
+#add-transform {
+  background-color: #808080; /* Grey background */
+  color: #fff;
+  padding: 10px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 24px; /* Larger font size for the plus sign */
+  text-align: center;
+
+  position: absolute; /* Absolute position */
+  right: 10px; /* 10px from the right */
+  bottom: 10px; /* 10px from the bottom */
+}
+
+#add-transform:hover {
+  background-color: #111;
+}

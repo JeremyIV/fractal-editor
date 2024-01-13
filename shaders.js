@@ -13,7 +13,7 @@ uniform float uR;
 
 uniform float uNumTransforms;
 
-uniform float uCumulativeWeights[10];
+uniform float uCumulativeMarkovMatrix[110];
 uniform mat4 uTransforms[10];
 uniform vec4 uColors[10];
 
@@ -35,6 +35,8 @@ void main() {
     vec4 transformedColor = vec4(0.0, 0.0, 0.0, 0.0);
     int randomInt = int(aIndex);
 
+    int last_transform = -1;
+
     for (int i=0; i < MAX_R; i++) {
         if (i >= int(uR)) break;
         randomInt = nextRandomInt(randomInt);
@@ -44,10 +46,14 @@ void main() {
 
         mat4 transform = mat4(1.0);
         vec4 color = uColors[9];
+
+        int row_offset = (last_transform + 1) * 10;
+
         for (int j=0; j < 10; j++) {
-            if (randomFloat < uCumulativeWeights[j]) {
+            if (randomFloat < uCumulativeMarkovMatrix[row_offset + j]) {
                 transform = uTransforms[j];
                 color = uColors[j];
+                last_transform = j;
                 break;
             }
         }

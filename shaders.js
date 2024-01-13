@@ -13,40 +13,11 @@ uniform float uR;
 
 uniform float uNumTransforms;
 
-uniform float uW0;
-uniform float uW1;
-uniform float uW2;
-uniform float uW3;
-uniform float uW4;
-uniform float uW5;
-uniform float uW6;
-uniform float uW7;
-uniform float uW8;
-uniform float uW9;
+uniform float uCumulativeWeights[10];
+uniform mat4 uTransforms[10];
+uniform vec4 uColors[10];
 
-uniform mat4 uTransform0;
-uniform mat4 uTransform1;
-uniform mat4 uTransform2;
-uniform mat4 uTransform3;
-uniform mat4 uTransform4;
-uniform mat4 uTransform5;
-uniform mat4 uTransform6;
-uniform mat4 uTransform7;
-uniform mat4 uTransform8;
-uniform mat4 uTransform9;
-
-uniform vec4 uC0;
-uniform vec4 uC1;
-uniform vec4 uC2;
-uniform vec4 uC3;
-uniform vec4 uC4;
-uniform vec4 uC5;
-uniform vec4 uC6;
-uniform vec4 uC7;
-uniform vec4 uC8;
-uniform vec4 uC9;
-
-uniform mat4 uProjectionMatrix; // The projection matrix
+uniform mat4 uProjectionMatrix; 
 
 int nextRandomInt(int x) {
     int a = 1664525;
@@ -62,26 +33,24 @@ float getRandomFloat(int randomInt) {
 void main() {
     vec4 offset = vec4(0.0, 0.0, 0.0, 1.0);
     vec4 transformedColor = vec4(0.0, 0.0, 0.0, 0.0);
-    int randomInt = int(aIndex) + 1000;
+    int randomInt = int(aIndex);
 
     for (int i=0; i < MAX_R; i++) {
         if (i >= int(uR)) break;
         randomInt = nextRandomInt(randomInt);
         float randomFloat = getRandomFloat(randomInt);
 
-        mat4 transform;
-        vec4 color;
-        if (randomFloat < uW0) {transform = uTransform0; color = uC0;}
-        else if (randomFloat < uW1) {transform = uTransform1; color = uC1;}
-        else if (randomFloat < uW2) {transform = uTransform2; color = uC2;}
-        else if (randomFloat < uW3) {transform = uTransform3; color = uC3;}
-        else if (randomFloat < uW4) {transform = uTransform4; color = uC4;}
-        else if (randomFloat < uW5) {transform = uTransform5; color = uC5;}
-        else if (randomFloat < uW6) {transform = uTransform6; color = uC6;}
-        else if (randomFloat < uW7) {transform = uTransform7; color = uC7;}
-        else if (randomFloat < uW8) {transform = uTransform8; color = uC8;}
-        else if (randomFloat < uW9) {transform = uTransform9; color = uC9;}
-        else {transform = mat4(1.0); color = uC9;} // Identity matrix as a default
+
+
+        mat4 transform = mat4(1.0);
+        vec4 color = uColors[9];
+        for (int j=0; j < 10; j++) {
+            if (randomFloat < uCumulativeWeights[j]) {
+                transform = uTransforms[j];
+                color = uColors[j];
+                break;
+            }
+        }
 
         offset = transform * offset;
         float alpha;

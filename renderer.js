@@ -140,28 +140,34 @@ function drawScene(quick) {
 
   let cumulative_sum = 0;
 
-  // Set the transform cumulative weights
-  // these are used to randomly choose which transform to apply
+  let cumulative_sums = [];
   for (let i = 0; i < transforms.length; i++) {
     let weight = determinants[i] / determinant_sum;
     cumulative_sum += weight;
-    const weightLoc = gl.getUniformLocation(program, `uW${i}`);
-    console.log(cumulative_sum);
-    gl.uniform1f(weightLoc, cumulative_sum);
+    cumulative_sums.push(cumulative_sum);
   }
 
-  // Set each transform uniform
+  const cumulativeWeightsLoc = gl.getUniformLocation(
+    program,
+    `uCumulativeWeights`
+  );
+  gl.uniform1fv(cumulativeWeightsLoc, cumulative_sums);
+
+  let flattenedTransforms = [];
+  let flattenedColors = [];
+
   for (let i = 0; i < 10; i++) {
-    const transformLoc = gl.getUniformLocation(program, `uTransform${i}`);
-    const colorLoc = gl.getUniformLocation(program, `uC${i}`);
-
-    // Check if the transform for this index exists, otherwise use an identity matrix
-
     const transform = i < numTransforms ? transforms[i] : I;
     const affine = getAffineTransform(transform);
-    gl.uniformMatrix4fv(transformLoc, true, affine);
-    gl.uniform4fv(colorLoc, transform.color);
+
+    flattenedTransforms = flattenedTransforms.concat(affine);
+    flattenedColors = flattenedColors.concat(transform.color);
   }
+  console.log("bollocks!!");
+  const transformLoc = gl.getUniformLocation(program, `uTransforms`);
+  const colorLoc = gl.getUniformLocation(program, `uColors`);
+  gl.uniformMatrix4fv(transformLoc, true, flattenedTransforms);
+  gl.uniform4fv(colorLoc, flattenedColors);
 
   gl.uniform1f(gl.getUniformLocation(program, "uN"), num_triangles);
   gl.uniform1f(gl.getUniformLocation(program, "uR"), recursion_level);

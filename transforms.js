@@ -22,6 +22,13 @@ const transforms = [
   },
 ];
 
-window.transforms = transforms;
+let transition_matrix = [
+  [false, true, true],
+  [true, false, true],
+  [true, true, false],
+];
 
-export { transforms };
+window.transforms = transforms;
+window.transition_matrix = transition_matrix;
+
+export { transforms, transition_matrix };

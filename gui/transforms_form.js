@@ -119,6 +119,24 @@ function addTransform() {
     color: [1, 1, 1, 0.5],
   };
   transforms.push(newTransform);
+
+  // Add a new row and column of True values to the transition matrix.
+  for (let i = 0; i < transforms.length - 1; i++) {
+    transition_matrix[i].push(true);
+  }
+
+  let last_row = [];
+  for (let i = 0; i < transforms.length; i++) {
+    last_row.push(true);
+  }
+
+  transition_matrix.push(last_row);
+
+  const existingGui = document.getElementById("transition-matrix-gui");
+  if (existingGui) {
+    existingGui.remove();
+  }
+
   createTransformForm(transforms.length - 1);
 
   createHandles();

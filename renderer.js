@@ -127,74 +127,19 @@ function drawScene(quick) {
   };
 
   let determinants = [];
-  let determinant_sum = 0.0;
 
-  // for each transform
   for (let i = 0; i < transforms.length; i++) {
     let t = transforms[i];
-    let determinant = Math.pow(t.x_scale * t.y_scale, 1);
-
+    let determinant = t.x_scale * t.y_scale;
     determinants.push(determinant);
-    determinant_sum += determinant;
   }
 
-  let transition_matrix = [
-    [false, true, true, true, true],
-    [true, false, true, true, true],
-    [true, true, false, true, true],
-    [true, true, true, false, true],
-    [true, true, true, true, false],
-  ];
+  console.log(transition_matrix);
 
-  let cumulative_sum = 0;
-
-  let cumulative_sums = [];
-  for (let i = 0; i < transforms.length; i++) {
-    let weight = determinants[i] / determinant_sum;
-    cumulative_sum += weight;
-    cumulative_sums.push(cumulative_sum);
-  }
-  for (let i = transforms.length; i < 10; i++) {
-    cumulative_sums.push(1);
-  }
-
-  // The first column of the markov matrix indicates where to go first.
-  let cumulative_markov_matrix = cumulative_sums;
-
-  for (let i = 0; i < transforms.length; i++) {
-    determinant_sum = 0.0;
-    for (let j = 0; j < transforms.length; j++) {
-      if (transition_matrix[i][j]) {
-        determinant_sum += determinants[j];
-      }
-    }
-
-    cumulative_sum = 0;
-    for (let j = 0; j < transforms.length; j++) {
-      if (transition_matrix[i][j]) {
-        let weight = determinants[j] / determinant_sum;
-        cumulative_sum += weight;
-      }
-      cumulative_markov_matrix.push(cumulative_sum);
-    }
-    console.log(determinant_sum, cumulative_sum);
-    // fill out the unused columns of the 10x10 matrix
-    for (let j = transforms.length; j < 10; j++) {
-      cumulative_markov_matrix.push(1);
-    }
-    cumulative_markov_matrix = cumulative_markov_matrix.concat(cumulative_sums);
-  }
-
-  console.log(cumulative_markov_matrix);
-
-  // fill out the unused rows of the 10x10 matrix
-  for (let i = transforms.length; i < 10; i++) {
-    for (let j = 0; j < 10; j++) {
-      cumulative_markov_matrix.push(1);
-    }
-  }
-
-  // TODO: function which takes in transforms
+  let cumulative_markov_matrix = getCumulativeMarkovMatrix(
+    determinants,
+    transition_matrix
+  );
 
   const cumulativeMarkovMatrixLoc = gl.getUniformLocation(
     program,

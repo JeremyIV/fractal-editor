@@ -30,6 +30,7 @@ document
       guiDiv.style.bottom = "20px";
       guiDiv.style.border = "1px solid black";
       guiDiv.style.padding = "10px";
+      guiDiv.style.paddingTop = "30px"; // Increased padding at the top
       guiDiv.style.backgroundColor = "white";
 
       const size = transition_matrix.length;

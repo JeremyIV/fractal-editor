@@ -23,9 +23,9 @@ const transforms = [
 ];
 
 let transition_matrix = [
-  [false, true, true],
-  [true, false, true],
-  [true, true, false],
+  [true, true, true],
+  [true, true, true],
+  [true, true, true],
 ];
 
 window.transforms = transforms;

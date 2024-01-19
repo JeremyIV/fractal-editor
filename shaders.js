@@ -64,6 +64,7 @@ void main() {
         else alpha = color[3];
         transformedColor[3] = 1.0;
         transformedColor = mix(transformedColor, color, alpha);
+        transformedColor[3] = 1.0;
     }
     vColor = transformedColor;
     gl_Position = uProjectionMatrix * (vec4(aPosition, 0.0, 1.0) +  offset);

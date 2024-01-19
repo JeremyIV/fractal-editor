@@ -344,8 +344,8 @@ function repositionHandles() {
     let handle = document.getElementById("handle-" + index);
     if (handle) {
       // Update the handle position
-      handle.style.left = `${handleCoords[0]}px`;
-      handle.style.top = `${handleCoords[1]}px`;
+      handle.style.left = `${handleCoords[0] - 7}px`;
+      handle.style.top = `${handleCoords[1] - 7}px`;
       handle.style.backgroundColor = getHandleColorCode(transform.color);
     }
   });

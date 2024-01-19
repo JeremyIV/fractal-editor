@@ -93,3 +93,11 @@ html {
 #add-transform:hover {
   background-color: #111;
 }
+
+
+#toggle-rotate {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 10;
+}

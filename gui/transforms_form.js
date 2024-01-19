@@ -7,78 +7,6 @@ import { transforms } from "../transforms.js";
 const transformGuiContainer = document.getElementById("transform-gui");
 const transformFormsContainer = document.getElementById("transform-forms");
 
-function updateTransform(index, property, value) {
-  if (property === "origin") {
-    transforms[index][property] = value;
-  } else if (property === "color") {
-    transforms[index].color = value;
-  } else {
-    transforms[index][property] = parseFloat(value);
-  }
-  // Redraw the scene with new transform values
-  repositionHandles();
-  drawScene();
-}
-
-function createTransformForm(index) {
-  const transform = transforms[index];
-  const colorHex = rgbaToHex(transform.color);
-  const alphaValue = transform.color[3];
-
-  const form = document.createElement("div");
-  form.className = "transform-form";
-  form.id = `transform-form-${index}`;
-  form.innerHTML = `
-      <div class="form-row">
-        <label>Color <input type="color" value="${colorHex}" data-index="${index}" data-property="color"></label>
-        <label>Alpha <input type="range" min="0" max="1" step="0.01" value="${alphaValue}" data-index="${index}" data-property="color_A"></label>
-      </div>
-      <div class="form-row">
-        <label>Origin X <input type="number" value="${transform.origin[0]}" data-index="${index}" data-property="origin_x"></label>
-        <label>Y <input type="number" value="${transform.origin[1]}" data-index="${index}" data-property="origin_y"></label>
-      </div>
-      <div class="form-row">
-        <label>Scale X <input type="number" value="${transform.x_scale}" data-index="${index}" data-property="x_scale"></label>
-        <label>Y <input type="number" value="${transform.y_scale}" data-index="${index}" data-property="y_scale"></label>
-      </div>
-      <div class="form-row">
-        <label>Rotation <input type="number" value="${transform.degrees_rotation}" data-index="${index}" data-property="degrees_rotation"></label>
-      </div>
-      <button class="close-btn" onclick="removeTransform(${index})">X</button>
-    `;
-
-  Array.from(form.querySelectorAll("input")).forEach((input) => {
-    input.addEventListener("input", (event) => {
-      const { index, property } = event.target.dataset;
-      handleInputChange(index, property, event.target.value);
-    });
-  });
-
-  transformFormsContainer.appendChild(form);
-}
-
-function handleInputChange(index, property, value) {
-  if (property === "color") {
-    const rgbaColor = hexToRgba(event.target.value);
-    rgbaColor.push(transforms[index].color[3]); // Keep existing alpha
-    updateTransform(index, property, rgbaColor);
-  } else if (property === "color_A") {
-    const newAlpha = parseFloat(event.target.value);
-    updateTransform(index, "color", [
-      ...transforms[index].color.slice(0, 3),
-      newAlpha,
-    ]);
-  } else if (property === "origin_x" || property === "origin_y") {
-    // Handle origin change
-    const newOrigin = [...transforms[index].origin];
-    newOrigin[property === "origin_x" ? 0 : 1] = parseFloat(value);
-    updateTransform(index, "origin", newOrigin);
-  } else {
-    // Handle other changes
-    updateTransform(index, property, value);
-  }
-}
-
 // Helper function to convert RGBA array to Hex color string
 function rgbaToHex(rgba) {
   return (
@@ -101,6 +29,52 @@ function hexToRgba(hex) {
   return [r, g, b]; // Alpha will be added separately
 }
 
+function updateTransforms() {
+  const allForms = document.querySelectorAll(".transform-form");
+  allForms.forEach((form) => {
+    const index = parseInt(form.dataset.index, 10);
+    const transform = {
+      origin: [
+        parseFloat(form.querySelector('[data-property="origin_x"]').value),
+        parseFloat(form.querySelector('[data-property="origin_y"]').value),
+        parseFloat(form.querySelector('[data-property="origin_z"]').value),
+      ],
+      degrees_rotation: parseFloat(
+        form.querySelector('[data-property="degrees_rotation"]').value
+      ),
+      rotation_axis: [
+        parseFloat(
+          form.querySelector('[data-property="rotation_axis_x"]').value
+        ),
+        parseFloat(
+          form.querySelector('[data-property="rotation_axis_y"]').value
+        ),
+        parseFloat(
+          form.querySelector('[data-property="rotation_axis_z"]').value
+        ),
+      ],
+      x_scale: parseFloat(
+        form.querySelector('[data-property="x_scale"]').value
+      ),
+      y_scale: parseFloat(
+        form.querySelector('[data-property="y_scale"]').value
+      ),
+      z_scale: parseFloat(
+        form.querySelector('[data-property="z_scale"]').value
+      ),
+      color: hexToRgba(form.querySelector('[data-property="color"]').value),
+    };
+    transform.color.push(
+      parseFloat(form.querySelector('[data-property="color_A"]').value)
+    );
+    transforms[index] = transform;
+  });
+
+  // Redraw the scene with new transform values
+  repositionHandles();
+  drawScene();
+}
+
 function removeTransform(index) {
   transforms.splice(index, 1);
   document.getElementById(`transform-form-${index}`).remove();
@@ -110,12 +84,54 @@ function removeTransform(index) {
   drawScene();
 }
 
+function createTransformForm(index) {
+  const transform = transforms[index];
+  const colorHex = rgbaToHex(transform.color);
+  const alphaValue = transform.color[3];
+
+  const form = document.createElement("div");
+  form.className = "transform-form";
+  form.dataset.index = index;
+  form.innerHTML = `
+    <div class="form-row">
+      <label>Color <input type="color" value="${colorHex}" data-index="${index}" data-property="color"></label>
+      <label>Alpha <input type="range" min="0" max="1" step="0.01" value="${alphaValue}" data-index="${index}" data-property="color_A"></label>
+    </div>
+    <div class="form-row">
+      <label>Origin X <input type="number" value="${transform.origin[0]}" data-index="${index}" data-property="origin_x"></label>
+      <label>Y <input type="number" value="${transform.origin[1]}" data-index="${index}" data-property="origin_y"></label>
+      <label>Z <input type="number" value="${transform.origin[2]}" data-index="${index}" data-property="origin_z"></label>
+    </div>
+    <div class="form-row">
+      <label>Scale X <input type="number" value="${transform.x_scale}" data-index="${index}" data-property="x_scale"></label>
+      <label>Y <input type="number" value="${transform.y_scale}" data-index="${index}" data-property="y_scale"></label>
+      <label>Z <input type="number" value="${transform.z_scale}" data-index="${index}" data-property="z_scale"></label>
+    </div>
+    <div class="form-row">
+      <label>Rotation <input type="number" value="${transform.degrees_rotation}" data-index="${index}" data-property="degrees_rotation"></label>
+      <label>Axis X <input type="number" value="${transform.rotation_axis[0]}" data-index="${index}" data-property="rotation_axis_x"></label>
+      <label>Y <input type="number" value="${transform.rotation_axis[1]}" data-index="${index}" data-property="rotation_axis_y"></label>
+      <label>Z <input type="number" value="${transform.rotation_axis[2]}" data-index="${index}" data-property="rotation_axis_z"></label>
+    </div>
+    <button class="close-btn" onclick="removeTransform(${index})">X</button>
+  `;
+
+  // Add event listeners for inputs
+  Array.from(form.querySelectorAll("input")).forEach((input) => {
+    input.addEventListener("input", updateTransforms);
+  });
+
+  transformFormsContainer.appendChild(form);
+}
+
 function addTransform() {
   const newTransform = {
-    origin: [0, 0],
+    origin: [0, 0, 0],
     degrees_rotation: 0,
+    rotation_axis: [0, 0, 1],
     x_scale: 0.5,
     y_scale: 0.5,
+    z_scale: 0.5,
     color: [1, 1, 1, 0.5],
   };
   transforms.push(newTransform);

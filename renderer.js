@@ -1,6 +1,6 @@
-import { transforms } from "./transforms.js";
+import { transforms, perspective } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
-import { getAffineTransform } from "./matrices.js";
+import { getAffineTransform3D } from "./matrices.js";
 
 const QUICK_MAX_TRIANGLES = 1_000_000;
 const MAX_TRIANGLES = 1_000_000;
@@ -9,12 +9,18 @@ const QUICK_TRI_SIZE = 0.005;
 const TRI_SIZE = 0.005;
 
 const canvas = document.getElementById("glCanvas");
-const gl = canvas.getContext("webgl2");
+const gl = canvas.getContext("webgl2", { depth: true });
 
 if (!gl) {
   alert("WebGL 2.0 not supported");
   throw new Error("WebGL 2.0 not supported");
 }
+
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL);
+gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
+gl.clearDepth(1.0); // Clear everything
+
 /////////////////////////
 // WEBGL INITIALIZATION
 /////////////////////////
@@ -32,6 +38,8 @@ const indexBuffer = gl.createBuffer();
 let bufferedNumTriangles = 0;
 
 function drawScene(quick) {
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
   gl.useProgram(program);
 
   // PROJECTION MATRIX
@@ -52,6 +60,7 @@ function drawScene(quick) {
       1
     );
   }
+  mat4.multiply(projectionMatrix, projectionMatrix, perspective);
 
   // Set the projection matrix uniform
   const uProjectionMatrixLoc = gl.getUniformLocation(
@@ -119,10 +128,12 @@ function drawScene(quick) {
 
   // Identity matrix
   const I = {
-    origin: [0, 0],
+    origin: [0, 0, 0],
     degrees_rotation: 0,
+    rotation_axis: [0, 0, 1],
     x_scale: 1,
     y_scale: 1,
+    z_scale: 1,
     color: [1, 1, 1, 1],
   };
 
@@ -130,7 +141,7 @@ function drawScene(quick) {
 
   for (let i = 0; i < transforms.length; i++) {
     let t = transforms[i];
-    let determinant = t.x_scale * t.y_scale;
+    let determinant = t.x_scale * t.y_scale * t.z_scale;
     determinants.push(determinant);
   }
 
@@ -150,17 +161,20 @@ function drawScene(quick) {
   let flattenedTransforms = [];
   let flattenedColors = [];
 
+  console.log(transforms);
   for (let i = 0; i < 10; i++) {
     const transform = i < numTransforms ? transforms[i] : I;
-    const affine = getAffineTransform(transform);
+    const affine = getAffineTransform3D(transform);
+    console.log(affine);
 
-    flattenedTransforms = flattenedTransforms.concat(affine);
+    flattenedTransforms = flattenedTransforms.concat(Array.from(affine));
     flattenedColors = flattenedColors.concat(transform.color);
   }
-  console.log("bollocks!!");
+  console.log(flattenedTransforms);
+
   const transformLoc = gl.getUniformLocation(program, `uTransforms`);
   const colorLoc = gl.getUniformLocation(program, `uColors`);
-  gl.uniformMatrix4fv(transformLoc, true, flattenedTransforms);
+  gl.uniformMatrix4fv(transformLoc, false, flattenedTransforms);
   gl.uniform4fv(colorLoc, flattenedColors);
 
   gl.uniform1f(gl.getUniformLocation(program, "uN"), num_triangles);

@@ -37,6 +37,8 @@ const indexBuffer = gl.createBuffer();
 
 let bufferedNumTriangles = 0;
 
+let projectionMatrix = mat4.create();
+
 function drawScene(quick) {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -45,7 +47,6 @@ function drawScene(quick) {
   // PROJECTION MATRIX
 
   const aspectRatio = canvas.width / canvas.height;
-  let projectionMatrix = mat4.create();
 
   if (canvas.width > canvas.height) {
     mat4.ortho(projectionMatrix, -aspectRatio, aspectRatio, -1, 1, -1, 1);
@@ -145,8 +146,6 @@ function drawScene(quick) {
     determinants.push(determinant);
   }
 
-  console.log(transition_matrix);
-
   let cumulative_markov_matrix = getCumulativeMarkovMatrix(
     determinants,
     transition_matrix
@@ -161,16 +160,13 @@ function drawScene(quick) {
   let flattenedTransforms = [];
   let flattenedColors = [];
 
-  console.log(transforms);
   for (let i = 0; i < 10; i++) {
     const transform = i < numTransforms ? transforms[i] : I;
     const affine = getAffineTransform3D(transform);
-    console.log(affine);
 
     flattenedTransforms = flattenedTransforms.concat(Array.from(affine));
     flattenedColors = flattenedColors.concat(transform.color);
   }
-  console.log(flattenedTransforms);
 
   const transformLoc = gl.getUniformLocation(program, `uTransforms`);
   const colorLoc = gl.getUniformLocation(program, `uColors`);
@@ -226,4 +222,4 @@ function createProgram(gl, vertexShader, fragmentShader) {
   return program;
 }
 
-export { drawScene };
+export { drawScene, projectionMatrix };

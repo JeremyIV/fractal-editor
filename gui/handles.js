@@ -1,5 +1,5 @@
 import { transforms } from "../transforms.js";
-import { drawScene } from "../renderer.js";
+import { drawScene, projectionMatrix } from "../renderer.js";
 import { reRenderTransformForms } from "./transforms_form.js";
 
 const canvas = document.getElementById("glCanvas");
@@ -25,7 +25,7 @@ function onScalingMouseDown(e) {
     // Set scaling state
     scaling = true;
     const transform = transforms[selectedTransformIndex];
-    const handleCoords = to_handle_coords(transform.origin);
+    const handleCoords = to_canvas_coords(transform.origin);
     scalingReferenceDist = Math.hypot(
       e.clientX - handleCoords[0],
       e.clientY - handleCoords[1]
@@ -60,7 +60,7 @@ function selectTransform(transformIndex) {
   rotationWidget.style.cursor = "pointer";
 
   // Position the widget 10px above the handle
-  let handleCoords = to_handle_coords(transforms[transformIndex].origin);
+  let handleCoords = to_canvas_coords(transforms[transformIndex].origin);
   //rotationWidget.style.left = `${handleCoords[0]}px`;
   //rotationWidget.style.top = `${handleCoords[1] - 20}px`;
   rotationWidget.style.left = "0px"; // Adjust as needed
@@ -74,7 +74,7 @@ function selectTransform(transformIndex) {
     rotating = true;
     oldRotationValue = transforms[transformIndex].degrees_rotation;
     let origin = transforms[transformIndex].origin;
-    let originHandleCoords = to_handle_coords(origin);
+    let originHandleCoords = to_canvas_coords(origin);
 
     // Calculate vector from origin to mouse coordinates
     const rect = canvas.getBoundingClientRect();
@@ -86,7 +86,6 @@ function selectTransform(transformIndex) {
 
     // Calculate the angle in degrees
     rotationReferenceAngle = Math.atan2(-dx, -dy) * (180 / Math.PI);
-    console.log(rotationReferenceAngle);
 
     e.stopPropagation(); // Prevent further event propagation
   });
@@ -155,7 +154,7 @@ function onMouseMove(e) {
   if (rotating && selectedTransformIndex !== null) {
     // Get the selected transform's origin
     let origin = transforms[selectedTransformIndex].origin;
-    let originHandleCoords = to_handle_coords(origin);
+    let originHandleCoords = to_canvas_coords(origin);
 
     // Calculate vector from origin to mouse coordinates
     const dx = mouseX - originHandleCoords[0];
@@ -176,7 +175,7 @@ function onMouseMove(e) {
   ) {
     // Scaling logic
     const transform = transforms[selectedTransformIndex];
-    const handleCoords = to_handle_coords(transform.origin);
+    const handleCoords = to_canvas_coords(transform.origin);
     const currentDist = Math.hypot(
       e.clientX - handleCoords[0],
       e.clientY - handleCoords[1]
@@ -194,8 +193,12 @@ function onMouseMove(e) {
     handle.style.top = `${mouseY - 6}px`;
 
     // Move the transform origin
-    let webgl_coords = to_webgl_coords([mouseX, mouseY]);
+    // let webgl_coords = to_webgl_coords([mouseX, mouseY]);
     let draggedTransform = transforms[draggedTransformIndex];
+    let webgl_coords = update_old_coord(draggedTransform.origin, [
+      mouseX,
+      mouseY,
+    ]);
     draggedTransform.origin = webgl_coords;
     drawScene(true);
   }
@@ -207,6 +210,48 @@ document.addEventListener("mouseup", onMouseUp);
 document.addEventListener("mousemove", onMouseMove);
 
 // TODO: actually use the projection matrix here
+
+function to_canvas_coords(webGL_coords) {
+  // Create a 4D vector from the 3D coordinates for matrix multiplication
+  let coords4D = [webGL_coords[0], webGL_coords[1], webGL_coords[2], 1.0];
+  vec4.transformMat4(coords4D, coords4D, projectionMatrix);
+
+  // Normalize the coordinates (homogeneous division)
+  coords4D = coords4D.map((v) => v / coords4D[3]);
+
+  // Convert to canvas coordinates
+  const canvasX = canvas.width / 2 + (canvas.width / 4) * coords4D[0];
+  const canvasY = canvas.height / 2 - (canvas.height / 4) * coords4D[1];
+
+  return [canvasX, canvasY];
+}
+
+function update_old_coord(old_coords, canvas_coords) {
+  // Convert canvas coordinates back to normalized device coordinates
+  const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 4);
+  const surfaceY =
+    (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 4);
+
+  // Apply the projection matrix to the old coordinates
+  let projectedCoords = [old_coords[0], old_coords[1], old_coords[2], 1.0];
+  vec4.transformMat4(projectedCoords, projectedCoords, projectionMatrix);
+
+  // Normalize the coordinates (homogeneous division)
+  projectedCoords = projectedCoords.map((v) => v / projectedCoords[3]);
+
+  // Update the x and y values
+  projectedCoords[0] = surfaceX;
+  projectedCoords[1] = surfaceY;
+
+  // Now apply the inverse projection to get back to 3D space
+  let inverseProjectionMatrix = mat4.create();
+  mat4.invert(inverseProjectionMatrix, projectionMatrix);
+  let updatedCoords = [];
+  vec4.transformMat4(updatedCoords, projectedCoords, inverseProjectionMatrix);
+
+  // Discard the w component and return the updated coordinates
+  return updatedCoords.slice(0, 3);
+}
 
 function to_webgl_coords(x) {
   const aspectRatio = canvas.width / canvas.height;
@@ -267,10 +312,10 @@ function createHandles() {
       handle.className = "control-handle";
       handle.style.position = "absolute";
 
-      let handle_coords = to_handle_coords(t.origin);
+      let handle_coords = to_canvas_coords(t.origin);
 
-      let handle_left = handle_coords[0];
-      let handle_top = handle_coords[1];
+      let handle_left = handle_coords[0] - 7;
+      let handle_top = handle_coords[1] - 7;
 
       handle.style.left = `${handle_left}px`;
       handle.style.top = `${handle_top}px`;
@@ -293,7 +338,7 @@ createHandles();
 function repositionHandles() {
   transforms.forEach((transform, index) => {
     // Recalculate handle coordinates
-    let handleCoords = to_handle_coords(transform.origin);
+    let handleCoords = to_canvas_coords(transform.origin);
 
     // Find the handle element
     let handle = document.getElementById("handle-" + index);

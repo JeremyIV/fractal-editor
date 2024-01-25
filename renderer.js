@@ -2,11 +2,17 @@ import { transforms, perspective } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
 import { getAffineTransform3D } from "./matrices.js";
 
-const QUICK_MAX_TRIANGLES = 1_000_000;
+const QUICK_MAX_TRIANGLES = 1_000_00;
 const MAX_TRIANGLES = 1_000_000;
 
-const QUICK_TRI_SIZE = 0.005;
-const TRI_SIZE = 0.005;
+const TRI_SIZE = 0.002;
+const QUICK_TRI_SIZE =
+  TRI_SIZE * Math.sqrt(MAX_TRIANGLES / QUICK_MAX_TRIANGLES);
+
+// quick_size^2 * QUICK_MAX_TRIANGLES = size^2 * MAX_TRIANGLES
+// quick_size^2 = size^2 * MAX_TRIANGLES / QUICK_MAX_TRIANGLES
+// quick_size = sqrt(size^2 * MAX_TRIANGLES / QUICK_MAX_TRIANGLES)
+// quick_size = size * sqrt(MAX_TRIANGLES / QUICK_MAX_TRIANGLES)
 
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { depth: true });

@@ -253,41 +253,6 @@ function update_old_coord(old_coords, canvas_coords) {
   return updatedCoords.slice(0, 3);
 }
 
-function to_webgl_coords(x) {
-  const aspectRatio = canvas.width / canvas.height;
-
-  // Convert WebGL coordinates to canvas space
-  let xCoord, yCoord;
-  if (canvas.width >= canvas.height) {
-    xCoord = ((x[0] - canvas.width / 2) * 4 * aspectRatio) / canvas.width;
-    yCoord = ((canvas.height / 2 - x[1]) * 4) / canvas.height;
-  } else {
-    xCoord = ((x[0] - canvas.width / 2) * 4) / canvas.width;
-    yCoord = ((canvas.height / 2 - x[1]) * 4) / aspectRatio / canvas.height;
-  }
-
-  return [xCoord, yCoord];
-}
-function to_handle_coords(x) {
-  // TODO: the +6 here is just to center the handles.
-  // this is the wrong place for this janky magic number to live.
-  // have it more obviously associated with the handle positions.
-  // Get aspect ratio
-  const aspectRatio = canvas.width / canvas.height;
-
-  // Convert WebGL coordinates to canvas space
-  let xCoord, yCoord;
-  if (canvas.width >= canvas.height) {
-    (xCoord = canvas.width / 2 + (x[0] * canvas.width) / aspectRatio / 4 - 6),
-      (yCoord = canvas.height / 2 - (x[1] * canvas.height) / 4 - 6);
-  } else {
-    xCoord = canvas.width / 2 + (x[0] * canvas.width) / 4 - 6;
-    yCoord = canvas.height / 2 - (x[1] * canvas.height * aspectRatio) / 4 - 6;
-  }
-
-  return [xCoord, yCoord];
-}
-
 function getHandleColorCode(color) {
   // Convert each color component from a float to an integer and clamp between 0 and 255
   const r = Math.round(255 * Math.min(Math.max(color[0], 0), 1));

@@ -19,7 +19,7 @@ function updateRotation(dx, dy) {
   const phiScale = 0.01;
 
   theta += dx * thetaScale;
-  phi -= dy * phiScale; // Inverting dy to match the screen's coordinate system
+  phi += dy * phiScale; // Inverting dy to match the screen's coordinate system
 
   // Clamp phi to prevent the camera from flipping over
   // This restricts the elevation angle to be between -90 and 90 degrees

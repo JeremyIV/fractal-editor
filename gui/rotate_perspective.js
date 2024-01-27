@@ -9,17 +9,33 @@ let lastMouseX = 0,
   lastMouseY = 0;
 
 // Function to update the 'perspective' matrix
-function updateRotation(dx, dy) {
-  // Convert dx, dy to rotation angles
-  const angleX = dy * 0.01; // Scale factor for rotation sensitivity
-  const angleY = dx * 0.01;
+let theta = 0; // Azimuthal angle
+let phi = 0; // Polar angle
 
-  // Update the 'perspective' matrix with new rotations
-  mat4.rotate(perspective, perspective, angleX, [1, 0, 0]); // Rotate around X axis
-  mat4.rotate(perspective, perspective, angleY, [0, 1, 0]); // Rotate around Y axis
+function updateRotation(dx, dy) {
+  // Update theta and phi based on dx and dy
+  // Adjust these scaling factors as needed for sensitivity
+  const thetaScale = 0.01;
+  const phiScale = 0.01;
+
+  theta += dx * thetaScale;
+  phi -= dy * phiScale; // Inverting dy to match the screen's coordinate system
+
+  // Clamp phi to prevent the camera from flipping over
+  // This restricts the elevation angle to be between -90 and 90 degrees
+  phi = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, phi));
+
+  // Reset the perspective matrix
+  mat4.identity(perspective);
+
+  // First, rotate around the Y axis (theta)
+  mat4.rotate(perspective, perspective, theta, [0, 1, 0]);
+
+  // Then, rotate around the X axis (phi)
+  mat4.rotate(perspective, perspective, phi, [1, 0, 0]);
 
   // Redraw the scene with the updated matrix
-  drawScene(true); // Implement this function to redraw your scene
+  drawScene(true);
   repositionHandles();
 }
 

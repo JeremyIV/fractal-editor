@@ -5,7 +5,7 @@ import { getAffineTransform3D } from "./matrices.js";
 const QUICK_MAX_TRIANGLES = 1_000_00;
 const MAX_TRIANGLES = 1_000_000;
 
-const TRI_SIZE = 0.002;
+const TRI_SIZE = 0.003;
 const QUICK_TRI_SIZE =
   TRI_SIZE * Math.sqrt(MAX_TRIANGLES / QUICK_MAX_TRIANGLES);
 
@@ -22,10 +22,17 @@ if (!gl) {
   throw new Error("WebGL 2.0 not supported");
 }
 
-gl.enable(gl.DEPTH_TEST);
-gl.depthFunc(gl.LEQUAL);
+// OPAQUE FRAGMENTS
+// gl.enable(gl.DEPTH_TEST);
+// gl.depthFunc(gl.LEQUAL);
+// gl.clearDepth(1.0); // Clear everything
+
+// ADDITIVE FRAGMENTS (glowing light effect)
+gl.depthMask(false);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.ONE, gl.ONE);
+
 gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
-gl.clearDepth(1.0); // Clear everything
 
 /////////////////////////
 // WEBGL INITIALIZATION
@@ -96,6 +103,7 @@ function drawScene(quick) {
     for (let i = 0; i < num_triangles; i++) {
       // Vertices for each triangle
       const size = quick ? QUICK_TRI_SIZE : TRI_SIZE;
+      // TODO: make the triangles start out facing the camera
       vertexData.push(0.0, size, -size, -size, size, -size);
 
       // Index for each vertex of the triangle

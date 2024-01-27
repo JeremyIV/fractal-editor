@@ -23,14 +23,14 @@ if (!gl) {
 }
 
 // OPAQUE FRAGMENTS
-// gl.enable(gl.DEPTH_TEST);
-// gl.depthFunc(gl.LEQUAL);
-// gl.clearDepth(1.0); // Clear everything
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL);
+gl.clearDepth(1.0); // Clear everything
 
 // ADDITIVE FRAGMENTS (glowing light effect)
-gl.depthMask(false);
-gl.enable(gl.BLEND);
-gl.blendFunc(gl.ONE, gl.ONE);
+//gl.depthMask(false);
+//gl.enable(gl.BLEND);
+//gl.blendFunc(gl.ONE, gl.ONE);
 
 gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
 
@@ -52,8 +52,10 @@ let bufferedNumTriangles = 0;
 
 let projectionMatrix = mat4.create();
 
-function drawScene(quick) {
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+function drawScene(quick, first_pass) {
+  if (first_pass) {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  }
 
   gl.useProgram(program);
 

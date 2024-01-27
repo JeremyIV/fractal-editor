@@ -75,12 +75,17 @@ function updateTransforms() {
   drawScene();
 }
 
-function removeTransform(index) {
+function removeTransform(form) {
+  const index = parseInt(form.getAttribute("data-index"), 10);
+  form.remove();
   transforms.splice(index, 1);
-  document.getElementById(`transform-form-${index}`).remove();
   // Update the form IDs and re-render the forms to reflect the updated indexes
+  const elements = document.getElementsByClassName("control-handle");
+  while (elements.length > 0) {
+    elements[0].remove();
+  }
   reRenderTransformForms();
-  repositionHandles();
+  createHandles();
   drawScene();
 }
 
@@ -113,13 +118,17 @@ function createTransformForm(index) {
       <label>Y <input type="number" value="${transform.rotation_axis[1]}" data-index="${index}" data-property="rotation_axis_y"></label>
       <label>Z <input type="number" value="${transform.rotation_axis[2]}" data-index="${index}" data-property="rotation_axis_z"></label>
     </div>
-    <button class="close-btn" onclick="removeTransform(${index})">X</button>
+    <button class="close-btn">X</button>
   `;
 
   // Add event listeners for inputs
   Array.from(form.querySelectorAll("input")).forEach((input) => {
     input.addEventListener("input", updateTransforms);
   });
+
+  form
+    .querySelector(".close-btn")
+    .addEventListener("click", (e) => removeTransform(form));
 
   transformFormsContainer.appendChild(form);
 }

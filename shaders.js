@@ -67,7 +67,7 @@ void main() {
         transformedColor[3] = 1.0;
     }
     vColor = transformedColor;
-    gl_Position = uProjectionMatrix * (vec4(aPosition, 0.0, 1.0) +  offset);
+    gl_Position =  vec4(aPosition, 0.0, 1.0) + uProjectionMatrix * offset;
 }`;
 
 const fragmentShaderSource = `#version 300 es

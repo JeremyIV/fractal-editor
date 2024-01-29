@@ -7,21 +7,26 @@
   <body>
     <div id="page-container">
       <canvas id="glCanvas"></canvas>
+      <button id="toggle-rotate">Toggle Rotate</button>
       <div id="transform-gui">
         <div id="transform-forms">
           <!-- Transform forms will be dynamically inserted here -->
         </div>
+        <button id="transition-matrix">Transition Matrix</button>
         <button id="add-transform">+</button>
       </div>
     </div>
 
     <!-- Link to the external JavaScript files -->
+    <script src="./markov.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.4.0/dist/gl-matrix-min.js"></script>
     <script type="module" src="./matrices.js"></script>
     <script type="module" src="./shaders.js"></script>
     <script type="module" src="./transforms.js"></script>
     <script type="module" src="./gui/handles.js"></script>
     <script type="module" src="./gui/transforms_form.js"></script>
+    <script type="module" src="./gui/transition_matrix.js"></script>
+    <script type="module" src="./gui/rotate_perspective.js"></script>
     <script type="module" src="./renderer.js"></script>
   </body>
 </html>

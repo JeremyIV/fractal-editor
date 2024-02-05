@@ -7,13 +7,6 @@ const canvas = document.getElementById("glCanvas");
 const MAX_CLICK_DURATION = 200;
 
 let selectedTransformIndex = null;
-let dragging = false;
-let oldRotationDegrees = null;
-let oldRotationAxis = null;
-let oldScalingValue = null;
-let clickStartDistance = null;
-let clickStartAngle = null;
-let clickStartTime = null;
 
 function getDistance(x0, y0, x1, y1) {
   const dx = x0 - x1;
@@ -29,82 +22,6 @@ function getAngle(x0, y0, x1, y1) {
   const angle = Math.atan2(-dx, -dy) * (180 / Math.PI);
 
   return angle;
-}
-function onMouseDown(e) {
-  if (e.preventDefault !== undefined) {
-    e.preventDefault();
-  }
-  if (e.target.className === "control-handle") {
-    const transformIndex = e.target.getAttribute("data-transform-index");
-    if (transformIndex !== null) {
-      selectedTransformIndex = transformIndex;
-      // TODO: make the selected transform appear different
-      dragging = true;
-    }
-    return;
-  }
-  if (selectedTransformIndex === null) {
-    return;
-  }
-  const transform = transforms[selectedTransformIndex];
-  const originCoords = to_canvas_coords(transform.origin);
-  const originX = originCoords[0];
-  const originY = originCoords[1];
-  const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
-  clickStartDistance = getDistance(originX, originY, mouseX, mouseY);
-  clickStartAngle = getAngle(originX, originY, mouseX, mouseY);
-  oldRotationDegrees = transform.degrees_rotation;
-  oldRotationAxis = transform.rotation_axis;
-  oldScalingValue = [transform.x_scale, transform.y_scale, transform.z_scale];
-  clickStartTime = new Date().getTime();
-}
-
-function getRotationMatrix(angle, axis) {
-  let radians = (angle * Math.PI) / 180; // Convert angle to radians
-  let rotationMatrix = mat3.create(); // Create a new identity mat3
-
-  // Normalize the axis of rotation
-  let normalizedAxis = vec3.create();
-  vec3.normalize(normalizedAxis, vec3.fromValues(...axis));
-
-  // Calculate the rotation matrix
-  // Note: mat3 does not have a direct fromRotation, so we adapt from mat4's approach
-  mat3.fromRotation(rotationMatrix, radians, normalizedAxis);
-
-  return rotationMatrix;
-}
-
-function getRotationAngleAndAxis(rotationMatrix) {
-  // Convert the glMatrix mat3 to a format suitable for numeric.js
-  let matrixForNumeric = [
-    Array.from(rotationMatrix.subarray(0, 3)),
-    Array.from(rotationMatrix.subarray(3, 6)),
-    Array.from(rotationMatrix.subarray(6, 9)),
-  ];
-
-  // Perform eigenvalue decomposition with numeric.js
-  let evd = numeric.eig(matrixForNumeric);
-  let eigenvalues = evd.lambda.x; // Real parts of the eigenvalues
-  let eigenvectors = evd.E.x; // Real parts of the eigenvectors
-
-  // Find an eigenvalue close to 1 and its corresponding eigenvector
-  let index = eigenvalues.findIndex((val) => Math.abs(val - 1) < 0.001);
-  if (index === -1) {
-    throw new Error("No valid rotation axis found.");
-  }
-  let rotationAxis = eigenvectors.map((vec) => vec[index]);
-
-  // Assuming the rotation matrix is proper and orthogonally normalized,
-  // the angle can be directly calculated from the trace method
-  let trace =
-    matrixForNumeric[0][0] + matrixForNumeric[1][1] + matrixForNumeric[2][2];
-
-  let angle = Math.acos((trace - 1) / 2);
-  angle = angle * (180 / Math.PI); // Convert to degrees
-
-  return { angle: angle, axis: rotationAxis };
 }
 
 function getViewAxis(projectionMatrix) {
@@ -125,28 +42,117 @@ function getViewAxis(projectionMatrix) {
   return viewAxis;
 }
 
-function onMouseMove(e) {
+function convertTouchEvent(event) {
+  event.preventDefault();
+  if (event.touches.length > 0) {
+    // Use the first touch point for the event
+    var touch = event.touches[0];
+    // Mimic a mouse event based on the first touch point
+    return {
+      ...event,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: touch.target,
+    };
+  }
+  return event;
+}
+
+function handleMouseDown(e) {
+  console.log("Handle mouse down!!");
   if (e.preventDefault !== undefined) {
     e.preventDefault();
   }
+
+  // TODO: remove the class 'selected' from all elements with class  control-handle
+  // TODO: set the class 'selected' on the mousedown'd handle
+
+  selectedTransformIndex = e.target.getAttribute("data-transform-index");
+  const transform = transforms[selectedTransformIndex];
+
+  function onMouseMove(e) {
+    if (e.preventDefault !== undefined) {
+      e.preventDefault();
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    console.log(transform);
+    const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
+    transform.origin = webgl_coords;
+    repositionHandles();
+    drawScene(true);
+  }
+  function onTouchMove(e) {
+    onMouseMove(convertTouchEvent(e));
+  }
+
+  function onMouseUp(e) {
+    console.log("Handle mouse up!!");
+    if (e.preventDefault !== undefined) {
+      e.preventDefault();
+    }
+
+    // document.removeEventListener("mousemove", onMouseMove);
+    // document.removeEventListener("mouseup", onMouseUp);
+    // document.removeEventListener("touchmove", onTouchMove);
+    // document.removeEventListener("touchend", onTouchEnd);
+    document.onmousemove = null;
+    document.onmouseup = null;
+    document.ontouchmove = null;
+    document.ontouchend = null;
+
+    drawScene();
+  }
+  function onTouchEnd(e) {
+    onMouseUp(convertTouchEvent(e));
+  }
+  // document.addEventListener("mousemove", onMouseMove);
+  // document.addEventListener("mouseup", onMouseUp);
+  // document.addEventListener("touchmove", onTouchMove);
+  // document.addEventListener("touchend", onTouchEnd);
+  document.onmousemove = onMouseMove;
+  document.onmouseup = onMouseUp;
+  document.ontouchmove = onTouchMove;
+  document.ontouchend = onTouchEnd;
+}
+
+function canvasMouseDown(e) {
+  console.log(selectedTransformIndex);
+
+  console.log("Canvas mouse down!!");
   if (selectedTransformIndex === null) {
     return;
+  }
+  if (e.preventDefault !== undefined) {
+    e.preventDefault();
   }
   const transform = transforms[selectedTransformIndex];
   const originCoords = to_canvas_coords(transform.origin);
   const originX = originCoords[0];
   const originY = originCoords[1];
-
   const rect = canvas.getBoundingClientRect();
   const mouseX = e.clientX - rect.left;
   const mouseY = e.clientY - rect.top;
-  if (dragging) {
-    const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
-    transform.origin = webgl_coords;
-    repositionHandles();
-    drawScene(true);
-  } else if (clickStartTime !== null) {
+  const clickStartDistance = getDistance(originX, originY, mouseX, mouseY);
+  const clickStartAngle = getAngle(originX, originY, mouseX, mouseY);
+  const oldRotationDegrees = transform.degrees_rotation;
+  const oldRotationAxis = transform.rotation_axis;
+  const oldScalingValue = [
+    transform.x_scale,
+    transform.y_scale,
+    transform.z_scale,
+  ];
+  const clickStartTime = new Date().getTime();
+
+  function onMouseMove(e) {
+    console.log("canvas Mouse move!!");
     // SCALING
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
     const distance = getDistance(originX, originY, mouseX, mouseY);
     const distance_ratio = distance / clickStartDistance;
 
@@ -158,21 +164,17 @@ function onMouseMove(e) {
     // Assuming getAngle and getViewAxis are provided
     // And assuming projectionMatrix is available and correctly set up
     const angle = getAngle(originX, originY, mouseX, mouseY) - clickStartAngle;
-    console.log(angle);
     const angleRadians = angle * (Math.PI / 180);
     const axis = getViewAxis(perspective); // Ensure this returns a vec3 or similar structure
     // Create quaternions for the delta rotation and the old rotation
     let delta_rotation_quaternion = quat.create();
     quat.setAxisAngle(delta_rotation_quaternion, axis, angleRadians); // Set delta rotation based on axis and angle
-    console.log(delta_rotation_quaternion);
     let old_rotation_quaternion = quat.create();
-    console.log(oldRotationAxis, oldRotationDegrees);
     quat.setAxisAngle(
       old_rotation_quaternion,
       oldRotationAxis,
       oldRotationDegrees * (Math.PI / 180)
     ); // Convert degrees to radians
-    console.log(old_rotation_quaternion);
     // Calculate the new rotation quaternion by multiplying the old rotation by the delta rotation
     let new_rotation_quaternion = quat.create();
     quat.multiply(
@@ -194,107 +196,57 @@ function onMouseMove(e) {
     transform.degrees_rotation = new_angle;
     transform.rotation_axis = Array.from(new_axis); // Convert vec3 to array if necessary
 
-    console.log({
-      angle: transform.degrees_rotation,
-      axis: transform.rotation_axis,
-    });
-
     drawScene(true);
   }
-}
-function onMouseUp(e) {
-  if (e.preventDefault !== undefined) {
-    e.preventDefault();
-  }
-  if (selectedTransformIndex === null) {
-    return;
-  }
-  if (dragging) {
-    dragging = false;
-    return;
-  }
-  const current_time = new Date().getTime();
-  const click_duration = current_time - clickStartTime;
-  if (click_duration < MAX_CLICK_DURATION) {
-    // clicked somewhere in space. This should deselect the
-    // selected transform without applying any modifications to it.
 
-    const transform = transforms[selectedTransformIndex];
-
-    transform.rotation_axis = oldRotationAxis;
-    transform.degrees_rotation = oldRotationDegrees;
-    transform.x_scale = oldScalingValue[0];
-    transform.y_scale_scale = oldScalingValue[1];
-    transform.z_scale = oldScalingValue[2];
-
-    selectedTransformIndex = null;
-    dragging = false;
-    oldRotationDegrees = null;
-    oldRotationAxis = null;
-    oldScalingValue = null;
-    clickStartDistance = null;
-    clickStartAngle = null;
-    clickStartTime = null;
-  } else {
-    oldRotationDegrees = null;
-    oldRotationAxis = null;
-    oldScalingValue = null;
-    clickStartDistance = null;
-    clickStartAngle = null;
-    clickStartTime = null;
+  function onTouchMove(e) {
+    onMouseMove(convertTouchEvent(e));
   }
-  drawScene();
-}
 
-function removeWidgets() {
-  let existingWidgets = document.querySelectorAll(".rotation-widget");
-  existingWidgets.forEach((widget) => widget.remove());
-  existingWidgets = document.querySelectorAll(".scaling-widget");
-  existingWidgets.forEach((widget) => widget.remove());
+  function onMouseUp(e) {
+    console.log("Canvas mouse up!!");
+    const current_time = new Date().getTime();
+    const click_duration = current_time - clickStartTime;
+    console.log(click_duration);
+    if (click_duration < MAX_CLICK_DURATION) {
+      // quick click!
+      console.log("quick click!!");
+      selectedTransformIndex = null;
+      console.log(selectedTransformIndex);
+      // TODO: remove the 'selected' class from all the handles
+    }
+
+    // document.removeEventListener("mousemove", onMouseMove);
+    // document.removeEventListener("mouseup", onMouseUp);
+    // document.removeEventListener("touchmove", onTouchMove);
+    // document.removeEventListener("touchend", onTouchEnd);
+    document.onmousemove = null;
+    document.onmouseup = null;
+    document.ontouchmove = null;
+    document.ontouchend = null;
+
+    drawScene();
+  }
+
+  function onTouchEnd(e) {
+    onMouseUp(convertTouchEvent(e));
+  }
+
+  // document.addEventListener("mousemove", onMouseMove);
+  // document.addEventListener("mouseup", onMouseUp);
+  // canvas.addEventListener("touchmove", onTouchMove, { passive: false });
+  // canvas.addEventListener("touchend", onTouchEnd, { passive: false });
+  document.onmousemove = onMouseMove;
+  document.onmouseup = onMouseUp;
+  document.ontouchmove = onTouchMove;
+  document.ontouchend = onTouchEnd;
 }
 
-document.addEventListener("mousedown", onMouseDown);
-document.addEventListener("mouseup", onMouseUp);
-document.addEventListener("mousemove", onMouseMove);
-
-function convertTouchEvent(event) {
-  // Prevent default to stop mobile browsers from handling touch events as mouse events/scrolling
-  event.preventDefault();
-
-  if (event.touches.length > 0) {
-    // Use the first touch point for the event
-    var touch = event.touches[0];
-    // Mimic a mouse event based on the first touch point
-    return {
-      ...event,
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-      target: touch.target,
-    };
-  }
-  return event;
-}
-
-document.addEventListener(
+canvas.addEventListener("mousedown", canvasMouseDown);
+canvas.addEventListener(
   "touchstart",
   function (event) {
-    onMouseDown(convertTouchEvent(event));
-  },
-  { passive: false }
-);
-
-document.addEventListener(
-  "touchend",
-  function (event) {
-    onMouseUp(convertTouchEvent(event));
-  },
-  { passive: false }
-);
-
-document.addEventListener(
-  "touchmove",
-  function (event) {
-    onMouseMove(convertTouchEvent(event));
+    canvasMouseDown(convertTouchEvent(event));
   },
   { passive: false }
 );
@@ -380,6 +332,14 @@ function createHandles() {
 
       handle.id = "handle-" + index; // Use index to create a unique ID
       handle.setAttribute("data-transform-index", index); // Set data attribute
+      handle.addEventListener("mousedown", handleMouseDown);
+      handle.addEventListener(
+        "touchstart",
+        function (event) {
+          handleMouseDown(convertTouchEvent(event));
+        },
+        { passive: false }
+      );
 
       document.body.appendChild(handle);
     }
@@ -585,4 +545,155 @@ export { createHandles, repositionHandles };
 //     removeWidgets();
 //     selectedTransformIndex = null;
 //   }
+// }
+// function onMouseDown(e) {
+//   if (e.preventDefault !== undefined) {
+//     e.preventDefault();
+//   }
+//   if (e.target.className === "control-handle") {
+//     const transformIndex = e.target.getAttribute("data-transform-index");
+//     if (transformIndex !== null) {
+//       selectedTransformIndex = transformIndex;
+//       // TODO: make the selected transform appear different
+//       dragging = true;
+//     }
+//     return;
+//   }
+//   if (selectedTransformIndex === null) {
+//     return;
+//   }
+//   const transform = transforms[selectedTransformIndex];
+//   const originCoords = to_canvas_coords(transform.origin);
+//   const originX = originCoords[0];
+//   const originY = originCoords[1];
+//   const rect = canvas.getBoundingClientRect();
+//   const mouseX = e.clientX - rect.left;
+//   const mouseY = e.clientY - rect.top;
+//   clickStartDistance = getDistance(originX, originY, mouseX, mouseY);
+//   clickStartAngle = getAngle(originX, originY, mouseX, mouseY);
+//   oldRotationDegrees = transform.degrees_rotation;
+//   oldRotationAxis = transform.rotation_axis;
+//   oldScalingValue = [transform.x_scale, transform.y_scale, transform.z_scale];
+//   clickStartTime = new Date().getTime();
+// }
+
+// function onMouseMove(e) {
+//   if (e.preventDefault !== undefined) {
+//     e.preventDefault();
+//   }
+//   if (selectedTransformIndex === null) {
+//     return;
+//   }
+//   const transform = transforms[selectedTransformIndex];
+//   const originCoords = to_canvas_coords(transform.origin);
+//   const originX = originCoords[0];
+//   const originY = originCoords[1];
+
+//   const rect = canvas.getBoundingClientRect();
+//   const mouseX = e.clientX - rect.left;
+//   const mouseY = e.clientY - rect.top;
+//   if (dragging) {
+//     const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
+//     transform.origin = webgl_coords;
+//     repositionHandles();
+//     drawScene(true);
+//   } else if (clickStartTime !== null) {
+//     // SCALING
+//     const distance = getDistance(originX, originY, mouseX, mouseY);
+//     const distance_ratio = distance / clickStartDistance;
+
+//     transform.x_scale = oldScalingValue[0] * distance_ratio;
+//     transform.y_scale = oldScalingValue[1] * distance_ratio;
+//     transform.z_scale = oldScalingValue[2] * distance_ratio;
+
+//     // ROTATION
+//     // Assuming getAngle and getViewAxis are provided
+//     // And assuming projectionMatrix is available and correctly set up
+//     const angle = getAngle(originX, originY, mouseX, mouseY) - clickStartAngle;
+//     console.log(angle);
+//     const angleRadians = angle * (Math.PI / 180);
+//     const axis = getViewAxis(perspective); // Ensure this returns a vec3 or similar structure
+//     // Create quaternions for the delta rotation and the old rotation
+//     let delta_rotation_quaternion = quat.create();
+//     quat.setAxisAngle(delta_rotation_quaternion, axis, angleRadians); // Set delta rotation based on axis and angle
+//     console.log(delta_rotation_quaternion);
+//     let old_rotation_quaternion = quat.create();
+//     console.log(oldRotationAxis, oldRotationDegrees);
+//     quat.setAxisAngle(
+//       old_rotation_quaternion,
+//       oldRotationAxis,
+//       oldRotationDegrees * (Math.PI / 180)
+//     ); // Convert degrees to radians
+//     console.log(old_rotation_quaternion);
+//     // Calculate the new rotation quaternion by multiplying the old rotation by the delta rotation
+//     let new_rotation_quaternion = quat.create();
+//     quat.multiply(
+//       new_rotation_quaternion,
+//       old_rotation_quaternion,
+//       delta_rotation_quaternion
+//     );
+
+//     // Normalize the new rotation quaternion to ensure it's valid for rotation
+//     quat.normalize(new_rotation_quaternion, new_rotation_quaternion);
+
+//     // Extract the angle and axis from the new rotation quaternion
+//     let new_axis = vec3.create();
+//     let new_angle_rads = quat.getAxisAngle(new_axis, new_rotation_quaternion);
+//     // quat.getAxisAngle returns the angle in radians, convert it back to degrees
+//     let new_angle = new_angle_rads * (180 / Math.PI);
+
+//     // Update the transform with the new rotation angle and axis
+//     transform.degrees_rotation = new_angle;
+//     transform.rotation_axis = Array.from(new_axis); // Convert vec3 to array if necessary
+
+//     console.log({
+//       angle: transform.degrees_rotation,
+//       axis: transform.rotation_axis,
+//     });
+
+//     drawScene(true);
+//   }
+// }
+// function onMouseUp(e) {
+//   if (e.preventDefault !== undefined) {
+//     e.preventDefault();
+//   }
+//   if (selectedTransformIndex === null) {
+//     return;
+//   }
+//   if (dragging) {
+//     dragging = false;
+//     return;
+//   }
+//   const current_time = new Date().getTime();
+//   const click_duration = current_time - clickStartTime;
+//   if (click_duration < MAX_CLICK_DURATION) {
+//     // clicked somewhere in space. This should deselect the
+//     // selected transform without applying any modifications to it.
+
+//     const transform = transforms[selectedTransformIndex];
+
+//     transform.rotation_axis = oldRotationAxis;
+//     transform.degrees_rotation = oldRotationDegrees;
+//     transform.x_scale = oldScalingValue[0];
+//     transform.y_scale_scale = oldScalingValue[1];
+//     transform.z_scale = oldScalingValue[2];
+
+//     selectedTransformIndex = null;
+//     dragging = false;
+//     oldRotationDegrees = null;
+//     oldRotationAxis = null;
+//     oldScalingValue = null;
+//     clickStartDistance = null;
+//     clickStartAngle = null;
+//     clickStartTime = null;
+//   } else {
+//     oldRotationDegrees = null;
+//     oldRotationAxis = null;
+//     oldScalingValue = null;
+//     clickStartDistance = null;
+//     clickStartAngle = null;
+//     clickStartTime = null;
+//   }
+//   drawScene();
 // }

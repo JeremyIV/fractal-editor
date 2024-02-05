@@ -59,7 +59,6 @@ function convertTouchEvent(event) {
 }
 
 function handleMouseDown(e) {
-  console.log("Handle mouse down!!");
   if (e.preventDefault !== undefined) {
     e.preventDefault();
   }
@@ -78,7 +77,6 @@ function handleMouseDown(e) {
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-    console.log(transform);
     const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
     transform.origin = webgl_coords;
     repositionHandles();
@@ -89,15 +87,10 @@ function handleMouseDown(e) {
   }
 
   function onMouseUp(e) {
-    console.log("Handle mouse up!!");
     if (e.preventDefault !== undefined) {
       e.preventDefault();
     }
 
-    // document.removeEventListener("mousemove", onMouseMove);
-    // document.removeEventListener("mouseup", onMouseUp);
-    // document.removeEventListener("touchmove", onTouchMove);
-    // document.removeEventListener("touchend", onTouchEnd);
     document.onmousemove = null;
     document.onmouseup = null;
     document.ontouchmove = null;
@@ -108,10 +101,6 @@ function handleMouseDown(e) {
   function onTouchEnd(e) {
     onMouseUp(convertTouchEvent(e));
   }
-  // document.addEventListener("mousemove", onMouseMove);
-  // document.addEventListener("mouseup", onMouseUp);
-  // document.addEventListener("touchmove", onTouchMove);
-  // document.addEventListener("touchend", onTouchEnd);
   document.onmousemove = onMouseMove;
   document.onmouseup = onMouseUp;
   document.ontouchmove = onTouchMove;
@@ -119,9 +108,6 @@ function handleMouseDown(e) {
 }
 
 function canvasMouseDown(e) {
-  console.log(selectedTransformIndex);
-
-  console.log("Canvas mouse down!!");
   if (selectedTransformIndex === null) {
     return;
   }
@@ -147,7 +133,6 @@ function canvasMouseDown(e) {
   const clickStartTime = new Date().getTime();
 
   function onMouseMove(e) {
-    console.log("canvas Mouse move!!");
     // SCALING
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -204,22 +189,14 @@ function canvasMouseDown(e) {
   }
 
   function onMouseUp(e) {
-    console.log("Canvas mouse up!!");
     const current_time = new Date().getTime();
     const click_duration = current_time - clickStartTime;
-    console.log(click_duration);
     if (click_duration < MAX_CLICK_DURATION) {
       // quick click!
-      console.log("quick click!!");
       selectedTransformIndex = null;
-      console.log(selectedTransformIndex);
       // TODO: remove the 'selected' class from all the handles
     }
 
-    // document.removeEventListener("mousemove", onMouseMove);
-    // document.removeEventListener("mouseup", onMouseUp);
-    // document.removeEventListener("touchmove", onTouchMove);
-    // document.removeEventListener("touchend", onTouchEnd);
     document.onmousemove = null;
     document.onmouseup = null;
     document.ontouchmove = null;
@@ -232,10 +209,6 @@ function canvasMouseDown(e) {
     onMouseUp(convertTouchEvent(e));
   }
 
-  // document.addEventListener("mousemove", onMouseMove);
-  // document.addEventListener("mouseup", onMouseUp);
-  // canvas.addEventListener("touchmove", onTouchMove, { passive: false });
-  // canvas.addEventListener("touchend", onTouchEnd, { passive: false });
   document.onmousemove = onMouseMove;
   document.onmouseup = onMouseUp;
   document.ontouchmove = onTouchMove;
@@ -366,334 +339,3 @@ function repositionHandles() {
 window.addEventListener("resize", repositionHandles);
 
 export { createHandles, repositionHandles };
-
-// function onScalingMouseDown(e) {
-//   e.preventDefault();
-//   if (scaling) {
-//     // Reset scaling state
-//     scaling = false;
-//     scalingReferenceDist = null;
-//     // Optional: Update scaling widget appearance to indicate it's not active
-//   } else {
-//     // Set scaling state
-//     scaling = true;
-//     const transform = transforms[selectedTransformIndex];
-//     const handleCoords = to_canvas_coords(transform.origin);
-//     scalingReferenceDist = Math.hypot(
-//       e.clientX - handleCoords[0],
-//       e.clientY - handleCoords[1]
-//     );
-//     oldScalingValue = [transform.x_scale, transform.y_scale];
-//     // Optional: Update scaling widget appearance to indicate it's active
-
-//     e.stopPropagation(); // Prevent further event propagation
-//   }
-// }
-
-// function onMouseMove(e) {
-//   // Calculate new mouse position
-
-//   // What all needs to happen on mouse move?
-//   // if a transform is being dragged, drag it
-//   if (rotating && selectedTransformIndex !== null) {
-//     // Get the selected transform's origin
-//     let origin = transforms[selectedTransformIndex].origin;
-//     let originHandleCoords = to_canvas_coords(origin);
-
-//     // Calculate vector from origin to mouse coordinates
-//     const dx = mouseX - originHandleCoords[0];
-//     const dy = mouseY - originHandleCoords[1];
-
-//     // Calculate the angle in degrees
-//     const angle =
-//       Math.atan2(-dx, -dy) * (180 / Math.PI) - rotationReferenceAngle;
-
-//     // Set the transform's rotation to this new value
-//     transforms[selectedTransformIndex].degrees_rotation =
-//       oldRotationValue + angle;
-//     drawScene(true);
-//   } else if (
-//     scaling &&
-//     selectedTransformIndex !== null &&
-//     scalingReferenceDist !== null
-//   ) {
-//     // Scaling logic
-//     const transform = transforms[selectedTransformIndex];
-//     const handleCoords = to_canvas_coords(transform.origin);
-//     const currentDist = Math.hypot(
-//       e.clientX - handleCoords[0],
-//       e.clientY - handleCoords[1]
-//     );
-//     const scalingFactor = currentDist / scalingReferenceDist;
-
-//     transform.x_scale = oldScalingValue[0] * scalingFactor;
-//     transform.y_scale = oldScalingValue[1] * scalingFactor;
-
-//     drawScene(true);
-//   } else if (draggedTransformIndex) {
-//     // Move the handle
-//     let handle = document.getElementById("handle-" + draggedTransformIndex);
-//     handle.style.left = `${mouseX - 6}px`;
-//     handle.style.top = `${mouseY - 6}px`;
-
-//     // Move the transform origin
-//     // let webgl_coords = to_webgl_coords([mouseX, mouseY]);
-//     let draggedTransform = transforms[draggedTransformIndex];
-//     let webgl_coords = update_old_coord(draggedTransform.origin, [
-//       mouseX,
-//       mouseY,
-//     ]);
-//     draggedTransform.origin = webgl_coords;
-//     drawScene(true);
-//   }
-//   // Redraw the scene
-// }
-
-// function selectTransform(transformIndex) {
-//   selectedTransformIndex = transformIndex;
-
-//   // delete old rotation widget
-//   removeWidgets();
-
-//   // Create a rotation widget
-//   let rotationWidget = document.createElement("div");
-//   rotationWidget.className = "rotation-widget";
-//   rotationWidget.style.position = "absolute";
-//   rotationWidget.style.color = "white";
-//   rotationWidget.textContent = "↻"; // Unicode symbol for rotation
-
-//   rotationWidget.style.cursor = "pointer";
-
-//   // Position the widget 10px above the handle
-//   let handleCoords = to_canvas_coords(transforms[transformIndex].origin);
-//   //rotationWidget.style.left = `${handleCoords[0]}px`;
-//   //rotationWidget.style.top = `${handleCoords[1] - 20}px`;
-//   rotationWidget.style.left = "0px"; // Adjust as needed
-//   rotationWidget.style.top = "-20px"; // Position above the handle
-//   rotationWidget.style.backgroundColor = "black";
-//   rotationWidget.style.borderRadius = 10;
-
-//   // Add event listener for rotation
-//   rotationWidget.addEventListener("mousedown", function (e) {
-//     e.preventDefault();
-//     rotating = true;
-//     oldRotationValue = transforms[transformIndex].degrees_rotation;
-//     let origin = transforms[transformIndex].origin;
-//     let originHandleCoords = to_canvas_coords(origin);
-
-//     // Calculate vector from origin to mouse coordinates
-//     const rect = canvas.getBoundingClientRect();
-//     const mouseX = e.clientX - rect.left;
-//     const mouseY = e.clientY - rect.top;
-
-//     const dx = mouseX - originHandleCoords[0];
-//     const dy = mouseY - originHandleCoords[1];
-
-//     // Calculate the angle in degrees
-//     rotationReferenceAngle = Math.atan2(-dx, -dy) * (180 / Math.PI);
-
-//     e.stopPropagation(); // Prevent further event propagation
-//   });
-
-//   let handle = document.getElementById("handle-" + transformIndex);
-
-//   handle.appendChild(rotationWidget);
-
-//   let scalingWidget = document.createElement("div");
-//   scalingWidget.className = "scaling-widget";
-//   scalingWidget.style.position = "absolute";
-//   scalingWidget.style.color = "white";
-//   scalingWidget.style.backgroundColor = "black";
-//   scalingWidget.style.borderRadius = 10;
-//   scalingWidget.textContent = "⇲"; // Unicode symbol for scaling
-
-//   scalingWidget.style.cursor = "pointer";
-
-//   // Position the widget 10px below the handle
-//   scalingWidget.style.left = "0px"; // Relative to the handle
-//   scalingWidget.style.top = "20px"; // Position below the handle
-
-//   // Add event listener for scaling
-//   scalingWidget.addEventListener("mousedown", onScalingMouseDown);
-//   handle.appendChild(scalingWidget);
-// }
-// function onMouseUp(e) {
-//   if (selectedTransformIndex !== null) {
-//     reRenderTransformForms();
-//   }
-//   draggedTransformIndex = null;
-//   rotating = false;
-//   oldRotationValue = null;
-//   scaling = false;
-//   scalingReferenceDist = null;
-//   oldScalingValue = null;
-//   drawScene();
-// }
-
-// function onMouseDown(e) {
-//   if (e.target.className === "control-handle") {
-//     e.preventDefault();
-//     const transformIndex = e.target.getAttribute("data-transform-index");
-//     if (transformIndex !== null) {
-//       draggedTransformIndex = transformIndex;
-//       if (selectedTransformIndex !== transformIndex) {
-//         selectTransform(transformIndex);
-//       }
-//     }
-//   } else {
-//     // delete old rotation widget
-//     removeWidgets();
-//     selectedTransformIndex = null;
-//   }
-// }
-// function onMouseDown(e) {
-//   if (e.preventDefault !== undefined) {
-//     e.preventDefault();
-//   }
-//   if (e.target.className === "control-handle") {
-//     const transformIndex = e.target.getAttribute("data-transform-index");
-//     if (transformIndex !== null) {
-//       selectedTransformIndex = transformIndex;
-//       // TODO: make the selected transform appear different
-//       dragging = true;
-//     }
-//     return;
-//   }
-//   if (selectedTransformIndex === null) {
-//     return;
-//   }
-//   const transform = transforms[selectedTransformIndex];
-//   const originCoords = to_canvas_coords(transform.origin);
-//   const originX = originCoords[0];
-//   const originY = originCoords[1];
-//   const rect = canvas.getBoundingClientRect();
-//   const mouseX = e.clientX - rect.left;
-//   const mouseY = e.clientY - rect.top;
-//   clickStartDistance = getDistance(originX, originY, mouseX, mouseY);
-//   clickStartAngle = getAngle(originX, originY, mouseX, mouseY);
-//   oldRotationDegrees = transform.degrees_rotation;
-//   oldRotationAxis = transform.rotation_axis;
-//   oldScalingValue = [transform.x_scale, transform.y_scale, transform.z_scale];
-//   clickStartTime = new Date().getTime();
-// }
-
-// function onMouseMove(e) {
-//   if (e.preventDefault !== undefined) {
-//     e.preventDefault();
-//   }
-//   if (selectedTransformIndex === null) {
-//     return;
-//   }
-//   const transform = transforms[selectedTransformIndex];
-//   const originCoords = to_canvas_coords(transform.origin);
-//   const originX = originCoords[0];
-//   const originY = originCoords[1];
-
-//   const rect = canvas.getBoundingClientRect();
-//   const mouseX = e.clientX - rect.left;
-//   const mouseY = e.clientY - rect.top;
-//   if (dragging) {
-//     const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
-//     transform.origin = webgl_coords;
-//     repositionHandles();
-//     drawScene(true);
-//   } else if (clickStartTime !== null) {
-//     // SCALING
-//     const distance = getDistance(originX, originY, mouseX, mouseY);
-//     const distance_ratio = distance / clickStartDistance;
-
-//     transform.x_scale = oldScalingValue[0] * distance_ratio;
-//     transform.y_scale = oldScalingValue[1] * distance_ratio;
-//     transform.z_scale = oldScalingValue[2] * distance_ratio;
-
-//     // ROTATION
-//     // Assuming getAngle and getViewAxis are provided
-//     // And assuming projectionMatrix is available and correctly set up
-//     const angle = getAngle(originX, originY, mouseX, mouseY) - clickStartAngle;
-//     console.log(angle);
-//     const angleRadians = angle * (Math.PI / 180);
-//     const axis = getViewAxis(perspective); // Ensure this returns a vec3 or similar structure
-//     // Create quaternions for the delta rotation and the old rotation
-//     let delta_rotation_quaternion = quat.create();
-//     quat.setAxisAngle(delta_rotation_quaternion, axis, angleRadians); // Set delta rotation based on axis and angle
-//     console.log(delta_rotation_quaternion);
-//     let old_rotation_quaternion = quat.create();
-//     console.log(oldRotationAxis, oldRotationDegrees);
-//     quat.setAxisAngle(
-//       old_rotation_quaternion,
-//       oldRotationAxis,
-//       oldRotationDegrees * (Math.PI / 180)
-//     ); // Convert degrees to radians
-//     console.log(old_rotation_quaternion);
-//     // Calculate the new rotation quaternion by multiplying the old rotation by the delta rotation
-//     let new_rotation_quaternion = quat.create();
-//     quat.multiply(
-//       new_rotation_quaternion,
-//       old_rotation_quaternion,
-//       delta_rotation_quaternion
-//     );
-
-//     // Normalize the new rotation quaternion to ensure it's valid for rotation
-//     quat.normalize(new_rotation_quaternion, new_rotation_quaternion);
-
-//     // Extract the angle and axis from the new rotation quaternion
-//     let new_axis = vec3.create();
-//     let new_angle_rads = quat.getAxisAngle(new_axis, new_rotation_quaternion);
-//     // quat.getAxisAngle returns the angle in radians, convert it back to degrees
-//     let new_angle = new_angle_rads * (180 / Math.PI);
-
-//     // Update the transform with the new rotation angle and axis
-//     transform.degrees_rotation = new_angle;
-//     transform.rotation_axis = Array.from(new_axis); // Convert vec3 to array if necessary
-
-//     console.log({
-//       angle: transform.degrees_rotation,
-//       axis: transform.rotation_axis,
-//     });
-
-//     drawScene(true);
-//   }
-// }
-// function onMouseUp(e) {
-//   if (e.preventDefault !== undefined) {
-//     e.preventDefault();
-//   }
-//   if (selectedTransformIndex === null) {
-//     return;
-//   }
-//   if (dragging) {
-//     dragging = false;
-//     return;
-//   }
-//   const current_time = new Date().getTime();
-//   const click_duration = current_time - clickStartTime;
-//   if (click_duration < MAX_CLICK_DURATION) {
-//     // clicked somewhere in space. This should deselect the
-//     // selected transform without applying any modifications to it.
-
-//     const transform = transforms[selectedTransformIndex];
-
-//     transform.rotation_axis = oldRotationAxis;
-//     transform.degrees_rotation = oldRotationDegrees;
-//     transform.x_scale = oldScalingValue[0];
-//     transform.y_scale_scale = oldScalingValue[1];
-//     transform.z_scale = oldScalingValue[2];
-
-//     selectedTransformIndex = null;
-//     dragging = false;
-//     oldRotationDegrees = null;
-//     oldRotationAxis = null;
-//     oldScalingValue = null;
-//     clickStartDistance = null;
-//     clickStartAngle = null;
-//     clickStartTime = null;
-//   } else {
-//     oldRotationDegrees = null;
-//     oldRotationAxis = null;
-//     oldScalingValue = null;
-//     clickStartDistance = null;
-//     clickStartAngle = null;
-//     clickStartTime = null;
-//   }
-//   drawScene();
-// }

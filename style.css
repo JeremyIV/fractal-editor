@@ -94,12 +94,11 @@ html {
   background-color: #111;
 }
 
-
 #toggle-rotate {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    z-index: 10;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 10;
 }
 
 /* For Chrome, Safari, Edge, Opera */
@@ -110,6 +109,18 @@ input::-webkit-inner-spin-button {
 }
 
 /* For Firefox */
-input[type=number] {
+input[type="number"] {
   -moz-appearance: textfield;
+}
+
+.control-handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 10px;
+}
+
+.control-handle.selected {
+  width: 13px;
+  height: 13px;
+  border-radius: 13px;
 }

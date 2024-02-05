@@ -63,8 +63,16 @@ function handleMouseDown(e) {
     e.preventDefault();
   }
 
-  // TODO: remove the class 'selected' from all elements with class  control-handle
-  // TODO: set the class 'selected' on the mousedown'd handle
+  const handles = document.querySelectorAll(".control-handle");
+  handles.forEach((handle) => {
+    handle.classList.remove("selected");
+  });
+
+  // Set the 'selected' class on the mousedown'd handle
+  // Ensure e.target is the element you intend to add 'selected' to, you might need additional checks depending on your HTML structure
+  if (e.target.classList.contains("control-handle")) {
+    e.target.classList.add("selected");
+  }
 
   selectedTransformIndex = e.target.getAttribute("data-transform-index");
   const transform = transforms[selectedTransformIndex];
@@ -80,6 +88,7 @@ function handleMouseDown(e) {
     const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
     transform.origin = webgl_coords;
     repositionHandles();
+    reRenderTransformForms();
     drawScene(true);
   }
   function onTouchMove(e) {
@@ -181,6 +190,7 @@ function canvasMouseDown(e) {
     transform.degrees_rotation = new_angle;
     transform.rotation_axis = Array.from(new_axis); // Convert vec3 to array if necessary
 
+    reRenderTransformForms();
     drawScene(true);
   }
 
@@ -194,7 +204,10 @@ function canvasMouseDown(e) {
     if (click_duration < MAX_CLICK_DURATION) {
       // quick click!
       selectedTransformIndex = null;
-      // TODO: remove the 'selected' class from all the handles
+      const handles = document.querySelectorAll(".control-handle");
+      handles.forEach((handle) => {
+        handle.classList.remove("selected");
+      });
     }
 
     document.onmousemove = null;
@@ -297,9 +310,9 @@ function createHandles() {
 
       handle.style.left = `${handle_left}px`;
       handle.style.top = `${handle_top}px`;
-      handle.style.width = "10px";
-      handle.style.height = "10px";
-      handle.style.borderRadius = "10px";
+      //handle.style.width = "10px";
+      //handle.style.height = "10px";
+      //handle.style.borderRadius = "10px";
       handle.style.backgroundColor = getHandleColorCode(t.color);
       handle.style.border = "2px solid black"; // Adjust the size as needed
 

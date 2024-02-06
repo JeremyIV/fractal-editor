@@ -6,26 +6,29 @@ html {
   height: 100%;
 }
 
-#page-container {
-  display: grid;
-  grid-template-columns: auto 300px; /* Canvas takes auto space, sidebar is 300px */
-  height: 100vh;
+.closeToolbar {
+  position: absolute;
+  top: 0;
+  right: 25px;
+  font-size: 36px;
+  margin-left: 50px;
 }
 
 #transform-gui {
+  padding-top: 50px;
   height: 100%;
-  background-color: #f8f8f8;
-  border-left: 1px solid #ddd;
-  overflow-y: auto;
-  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2);
-  padding: 10px;
-  box-sizing: border-box;
+  width: 0;
+  position: fixed;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  background-color: #ebebeb;
+  overflow-x: hidden;
 }
 
 #transform-forms {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .transform-form {
@@ -34,7 +37,7 @@ html {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   position: relative;
   padding: 10px;
-  margin-bottom: 10px;
+  margin: 10px;
 }
 
 .form-row {
@@ -94,6 +97,13 @@ html {
   background-color: #111;
 }
 
+#menu-toggle {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 10;
+}
+
 #toggle-rotate {
   position: absolute;
   right: 10px;
@@ -114,13 +124,13 @@ input[type="number"] {
 }
 
 .control-handle {
-  width: 10px;
-  height: 10px;
-  border-radius: 10px;
+  width: 15px;
+  height: 15px;
+  border-radius: 15px;
 }
 
 .control-handle.selected {
-  width: 13px;
-  height: 13px;
-  border-radius: 13px;
+  width: 20px;
+  height: 20px;
+  border-radius: 20px;
 }

@@ -32,6 +32,7 @@ document
       guiDiv.style.padding = "10px";
       guiDiv.style.paddingTop = "30px"; // Increased padding at the top
       guiDiv.style.backgroundColor = "white";
+      guiDiv.style.zIndex = 2;
 
       const size = transition_matrix.length;
       const table = document.createElement("table");

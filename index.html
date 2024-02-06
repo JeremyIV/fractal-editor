@@ -5,21 +5,22 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div id="page-container">
-      <canvas id="glCanvas"></canvas>
-      <button id="toggle-rotate">Toggle Rotate</button>
-      <div id="transform-gui">
-        <div id="transform-forms">
-          <!-- Transform forms will be dynamically inserted here -->
-        </div>
-        <button id="transition-matrix">Transition Matrix</button>
-        <button id="add-transform">+</button>
+    <canvas id="glCanvas"></canvas>
+    <button id="toggle-rotate">Toggle Rotate</button>
+    <button id="menu-toggle">☰</button>
+    <div id="transform-gui">
+      <a href="javascript:void(0)" id="closeToolbar" class="closeToolbar">×</a>
+      <div id="transform-forms">
+        <!-- Transform forms will be dynamically inserted here -->
       </div>
+      <button id="transition-matrix">Transition Matrix</button>
+      <button id="add-transform">+</button>
     </div>
 
     <!-- Link to the external JavaScript files -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
     <script src="./markov.js"></script>
+    <script type="module" src="gui/toggle_toolbar.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.4.0/dist/gl-matrix-min.js"></script>
     <script type="module" src="./matrices.js"></script>
     <script type="module" src="./shaders.js"></script>

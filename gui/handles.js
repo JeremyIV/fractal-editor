@@ -305,8 +305,8 @@ function createHandles() {
 
       let handle_coords = to_canvas_coords(t.origin);
 
-      let handle_left = handle_coords[0] - 7;
-      let handle_top = handle_coords[1] - 7;
+      let handle_left = handle_coords[0] - 10;
+      let handle_top = handle_coords[1] - 10;
 
       handle.style.left = `${handle_left}px`;
       handle.style.top = `${handle_top}px`;
@@ -343,8 +343,8 @@ function repositionHandles() {
     let handle = document.getElementById("handle-" + index);
     if (handle) {
       // Update the handle position
-      handle.style.left = `${handleCoords[0] - 7}px`;
-      handle.style.top = `${handleCoords[1] - 7}px`;
+      handle.style.left = `${handleCoords[0] - 10}px`;
+      handle.style.top = `${handleCoords[1] - 10}px`;
       handle.style.backgroundColor = getHandleColorCode(transform.color);
     }
   });

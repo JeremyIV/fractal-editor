@@ -127,6 +127,7 @@ input[type="number"] {
   width: 15px;
   height: 15px;
   border-radius: 15px;
+  box-shadow: 0 0 0 1.5px white; /* Second border simulated with box-shadow */
 }
 
 .control-handle.selected {

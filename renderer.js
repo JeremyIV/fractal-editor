@@ -4,13 +4,8 @@ import { getAffineTransform3D } from "./matrices.js";
 
 let MILLION_TRI_SIZE = 0.003;
 
-let MAX_TRIANGLES = 100_000;
-let QUICK_MAX_TRIANGLES = 10_000;
-
-let TRI_SIZE = MILLION_TRI_SIZE * Math.sqrt(1_000_000 / MAX_TRIANGLES);
-
-let QUICK_TRI_SIZE =
-  MILLION_TRI_SIZE * Math.sqrt(1_000_000 / QUICK_MAX_TRIANGLES);
+let MAX_POINTS = 100_000;
+let QUICK_MAX_POINTS = 10_000;
 
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { depth: true });
@@ -46,7 +41,7 @@ const program = createProgram(gl, vertexShader, fragmentShader);
 const positionBuffer = gl.createBuffer();
 const indexBuffer = gl.createBuffer();
 
-let bufferedNumTriangles = 0;
+let bufferedNumPoints = 0;
 
 let projectionMatrix = mat4.create();
 
@@ -88,28 +83,15 @@ function drawScene(quick, first_pass) {
   if (quick === undefined) {
     quick = false;
   }
-  //const max_trianges = quick ? QUICK_MAX_TRIANGLES : MAX_TRIANGLES;
-  // const recursion_level = Math.floor(
-  //   Math.log(max_trianges) / Math.log(transforms.length)
-  // );
-  //const recursion_level = 1;
-  //const num_triangles = Math.pow(transforms.length, recursion_level); // Number of triangles
-  const num_triangles = quick ? 100_000 : 1_000_000;
-  const recursion_level = quick ? 20 : 100;
+  const num_points = quick ? 100_000 : 1_000_000;
+  const recursion_level = quick ? 20 : 50;
   // If the number of triangles has changed, update the buffer
-  if (num_triangles != bufferedNumTriangles) {
+  if (num_points != bufferedNumPoints) {
     const vertexData = [];
     const indexData = [];
-    for (let i = 0; i < num_triangles; i++) {
-      // Vertices for each triangle
-      const size = quick ? QUICK_TRI_SIZE : TRI_SIZE;
-      // TODO: make the triangles start out facing the camera
-      vertexData.push(0.0, size, -size, -size, size, -size);
-
-      // Index for each vertex of the triangle
-      for (let j = 0; j < 3; j++) {
-        indexData.push(i);
-      }
+    for (let i = 0; i < num_points; i++) {
+      vertexData.push(0.0, 0.0);
+      indexData.push(i);
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(
@@ -121,7 +103,7 @@ function drawScene(quick, first_pass) {
     gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(indexData), gl.STATIC_DRAW);
 
-    bufferedNumTriangles = num_triangles;
+    bufferedNumPoints = num_points;
   }
   let startTime = new Date().getTime();
   const vao = gl.createVertexArray();
@@ -188,7 +170,7 @@ function drawScene(quick, first_pass) {
   gl.uniformMatrix4fv(transformLoc, false, flattenedTransforms);
   gl.uniform4fv(colorLoc, flattenedColors);
 
-  gl.uniform1f(gl.getUniformLocation(program, "uN"), num_triangles);
+  gl.uniform1f(gl.getUniformLocation(program, "uN"), num_points);
   gl.uniform1f(gl.getUniformLocation(program, "uR"), recursion_level);
 
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
@@ -196,7 +178,7 @@ function drawScene(quick, first_pass) {
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.bindVertexArray(vao);
-  gl.drawArrays(gl.TRIANGLES, 0, 3 * num_triangles); // Draw N triangles
+  gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points
 
   console.log(new Date().getTime() - startTime);
   // TODO:

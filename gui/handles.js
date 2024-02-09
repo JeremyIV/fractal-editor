@@ -116,12 +116,81 @@ function handleMouseDown(e) {
   document.ontouchend = onTouchEnd;
 }
 
+let lastMouseX = 0,
+  lastMouseY = 0;
+
+// Function to update the 'perspective' matrix
+let theta = 0; // Azimuthal angle
+let phi = 0; // Polar angle
+
+function updateRotation(dx, dy) {
+  // Update theta and phi based on dx and dy
+  // Adjust these scaling factors as needed for sensitivity
+  const thetaScale = 0.01;
+  const phiScale = 0.01;
+
+  theta += dx * thetaScale;
+  phi += dy * phiScale; // Inverting dy to match the screen's coordinate system
+
+  // Clamp phi to prevent the camera from flipping over
+  // This restricts the elevation angle to be between -90 and 90 degrees
+  //phi = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, phi));
+
+  // Reset the perspective matrix
+  mat4.identity(perspective);
+
+  // First, rotate around the Y axis (theta)
+  mat4.rotate(perspective, perspective, theta, [0, 1, 0]);
+
+  // Then, rotate around the X axis (phi)
+  mat4.rotate(perspective, perspective, phi, [1, 0, 0]);
+
+  // Redraw the scene with the updated matrix
+  drawScene(true);
+  repositionHandles();
+}
+
 function canvasMouseDown(e) {
-  if (selectedTransformIndex === null) {
-    return;
-  }
   if (e.preventDefault !== undefined) {
     e.preventDefault();
+  }
+  if (selectedTransformIndex === null) {
+    console.log("begin rotate perspective!");
+    // rotate the viewport
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+
+    function onMouseMove(e) {
+      console.log("mouse move!");
+      if (e.preventDefault !== undefined) {
+        e.preventDefault();
+      }
+      const dx = e.clientX - lastMouseX;
+      const dy = e.clientY - lastMouseY;
+      updateRotation(dx, dy);
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    }
+    function onTouchMove(e) {
+      onMouseMove(convertTouchEvent(e));
+    }
+
+    function onMouseUp(e) {
+      console.log("mouse up!!");
+      document.onmousemove = null;
+      document.onmouseup = null;
+      document.ontouchmove = null;
+      document.ontouchend = null;
+      drawScene(); // Implement this function to redraw your scene
+    }
+    function onTouchEnd(e) {
+      onMouseUp(convertTouchEvent(e));
+    }
+    document.onmousemove = onMouseMove;
+    document.onmouseup = onMouseUp;
+    document.ontouchmove = onTouchMove;
+    document.ontouchend = onTouchEnd;
+    return;
   }
   const transform = transforms[selectedTransformIndex];
   const originCoords = to_canvas_coords(transform.origin);

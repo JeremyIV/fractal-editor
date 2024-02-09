@@ -78,14 +78,14 @@ function drawScene(quick, first_pass) {
   );
   gl.uniformMatrix4fv(uProjectionMatrixLoc, false, projectionMatrix);
 
-  // TRIANGLE AND INDEX BUFFERS
+  // POINT AND INDEX BUFFERS
 
   if (quick === undefined) {
     quick = false;
   }
   const num_points = quick ? 100_000 : 1_000_000;
   const recursion_level = quick ? 20 : 50;
-  // If the number of triangles has changed, update the buffer
+  // If the number of points has changed, update the buffer
   if (num_points != bufferedNumPoints) {
     const vertexData = [];
     const indexData = [];
@@ -181,7 +181,6 @@ function drawScene(quick, first_pass) {
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points
 
   console.log(new Date().getTime() - startTime);
-  // TODO:
 }
 
 function resizeCanvas() {

@@ -58,6 +58,56 @@ function convertTouchEvent(event) {
   return event;
 }
 
+// TODO
+// pull out shared logic of click-drag pattern
+
+function registerDragEvents(onMove, onUp) {
+  // TODO:
+  // onMove: takes in x,y coords of the move event
+  // onUp is optional, and runs in addition to the standard onUp events
+
+  function onMouseMove(e) {
+    if (e.preventDefault !== undefined) {
+      e.preventDefault();
+    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    onMove(x, y);
+
+    repositionHandles();
+    reRenderTransformForms();
+    drawScene(true);
+  }
+
+  function onTouchMove(e) {
+    onMouseMove(convertTouchEvent(e));
+  }
+  function onMouseUp(e) {
+    if (e.preventDefault !== undefined) {
+      e.preventDefault();
+    }
+    if (onUp !== undefined) {
+      onUp();
+    }
+    document.onmousemove = null;
+    document.onmouseup = null;
+    document.removeEventListener("touchmove", onTouchMove, { passive: false });
+    document.removeEventListener("touchend", onTouchEnd, { passive: false });
+    drawScene();
+  }
+
+  function onTouchEnd(e) {
+    onMouseUp(convertTouchEvent(e));
+  }
+
+  document.onmousemove = onMouseMove;
+  document.onmouseup = onMouseUp;
+  document.addEventListener("touchmove", onTouchMove, { passive: false });
+  document.addEventListener("touchend", onTouchEnd, { passive: false });
+}
+
 function handleMouseDown(e) {
   if (e.preventDefault !== undefined) {
     e.preventDefault();
@@ -67,9 +117,6 @@ function handleMouseDown(e) {
   handles.forEach((handle) => {
     handle.classList.remove("selected");
   });
-
-  // Set the 'selected' class on the mousedown'd handle
-  // Ensure e.target is the element you intend to add 'selected' to, you might need additional checks depending on your HTML structure
   if (e.target.classList.contains("control-handle")) {
     e.target.classList.add("selected");
   }
@@ -77,47 +124,13 @@ function handleMouseDown(e) {
   selectedTransformIndex = e.target.getAttribute("data-transform-index");
   const transform = transforms[selectedTransformIndex];
 
-  function onMouseMove(e) {
-    if (e.preventDefault !== undefined) {
-      e.preventDefault();
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    const webgl_coords = update_old_coord(transform.origin, [mouseX, mouseY]);
+  function onMove(x, y) {
+    const webgl_coords = update_old_coord(transform.origin, [x, y]);
     transform.origin = webgl_coords;
-    repositionHandles();
-    reRenderTransformForms();
-    drawScene(true);
-  }
-  function onTouchMove(e) {
-    onMouseMove(convertTouchEvent(e));
   }
 
-  function onMouseUp(e) {
-    if (e.preventDefault !== undefined) {
-      e.preventDefault();
-    }
-
-    document.onmousemove = null;
-    document.onmouseup = null;
-    document.ontouchmove = null;
-    document.ontouchend = null;
-
-    drawScene();
-  }
-  function onTouchEnd(e) {
-    onMouseUp(convertTouchEvent(e));
-  }
-  document.onmousemove = onMouseMove;
-  document.onmouseup = onMouseUp;
-  document.ontouchmove = onTouchMove;
-  document.ontouchend = onTouchEnd;
+  registerDragEvents(onMove);
 }
-
-let lastMouseX = 0,
-  lastMouseY = 0;
 
 // Function to update the 'perspective' matrix
 let theta = 0; // Azimuthal angle
@@ -144,54 +157,30 @@ function updateRotation(dx, dy) {
 
   // Then, rotate around the X axis (phi)
   mat4.rotate(perspective, perspective, phi, [1, 0, 0]);
-
-  // Redraw the scene with the updated matrix
-  drawScene(true);
-  repositionHandles();
 }
 
 function canvasMouseDown(e) {
   if (e.preventDefault !== undefined) {
     e.preventDefault();
   }
+
+  // If no transform is slected, rotate the view perspective
   if (selectedTransformIndex === null) {
-    console.log("begin rotate perspective!");
     // rotate the viewport
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
+    let lastX = e.clientX;
+    let lastY = e.clientY;
 
-    function onMouseMove(e) {
-      console.log("mouse move!");
-      if (e.preventDefault !== undefined) {
-        e.preventDefault();
-      }
-      const dx = e.clientX - lastMouseX;
-      const dy = e.clientY - lastMouseY;
+    function onMove(x, y) {
+      const dx = x - lastX;
+      const dy = y - lastY;
       updateRotation(dx, dy);
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
+      lastX = x;
+      lastY = y;
     }
-    function onTouchMove(e) {
-      onMouseMove(convertTouchEvent(e));
-    }
-
-    function onMouseUp(e) {
-      console.log("mouse up!!");
-      document.onmousemove = null;
-      document.onmouseup = null;
-      document.ontouchmove = null;
-      document.ontouchend = null;
-      drawScene(); // Implement this function to redraw your scene
-    }
-    function onTouchEnd(e) {
-      onMouseUp(convertTouchEvent(e));
-    }
-    document.onmousemove = onMouseMove;
-    document.onmouseup = onMouseUp;
-    document.ontouchmove = onTouchMove;
-    document.ontouchend = onTouchEnd;
+    registerDragEvents(onMove);
     return;
   }
+
   const transform = transforms[selectedTransformIndex];
   const originCoords = to_canvas_coords(transform.origin);
   const originX = originCoords[0];
@@ -210,13 +199,9 @@ function canvasMouseDown(e) {
   ];
   const clickStartTime = new Date().getTime();
 
-  function onMouseMove(e) {
+  function onMove(x, y) {
     // SCALING
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    const distance = getDistance(originX, originY, mouseX, mouseY);
+    const distance = getDistance(originX, originY, x, y);
     const distance_ratio = distance / clickStartDistance;
 
     transform.x_scale = oldScalingValue[0] * distance_ratio;
@@ -226,7 +211,7 @@ function canvasMouseDown(e) {
     // ROTATION
     // Assuming getAngle and getViewAxis are provided
     // And assuming projectionMatrix is available and correctly set up
-    const angle = getAngle(originX, originY, mouseX, mouseY) - clickStartAngle;
+    const angle = getAngle(originX, originY, x, y) - clickStartAngle;
     const angleRadians = angle * (Math.PI / 180);
     const axis = getViewAxis(perspective); // Ensure this returns a vec3 or similar structure
     // Create quaternions for the delta rotation and the old rotation
@@ -258,16 +243,9 @@ function canvasMouseDown(e) {
     // Update the transform with the new rotation angle and axis
     transform.degrees_rotation = new_angle;
     transform.rotation_axis = Array.from(new_axis); // Convert vec3 to array if necessary
-
-    reRenderTransformForms();
-    drawScene(true);
   }
 
-  function onTouchMove(e) {
-    onMouseMove(convertTouchEvent(e));
-  }
-
-  function onMouseUp(e) {
+  function onUp() {
     const current_time = new Date().getTime();
     const click_duration = current_time - clickStartTime;
     if (click_duration < MAX_CLICK_DURATION) {
@@ -278,23 +256,9 @@ function canvasMouseDown(e) {
         handle.classList.remove("selected");
       });
     }
-
-    document.onmousemove = null;
-    document.onmouseup = null;
-    document.ontouchmove = null;
-    document.ontouchend = null;
-
-    drawScene();
   }
 
-  function onTouchEnd(e) {
-    onMouseUp(convertTouchEvent(e));
-  }
-
-  document.onmousemove = onMouseMove;
-  document.onmouseup = onMouseUp;
-  document.ontouchmove = onTouchMove;
-  document.ontouchend = onTouchEnd;
+  registerDragEvents(onMove, onUp);
 }
 
 canvas.addEventListener("mousedown", canvasMouseDown);

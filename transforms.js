@@ -42,9 +42,51 @@ perspective = mat4.rotate(
   vec3.fromValues(0, 1, 0)
 );
 
-console.log(perspective);
-
 window.transforms = transforms;
 window.transition_matrix = transition_matrix;
 
-export { transforms, transition_matrix, perspective };
+function getAffineTransform3D(transform) {
+  // Convert rotation to radians
+  var theta = (transform.degrees_rotation * Math.PI) / 180;
+
+  // Create a blank matrix for combined transformations
+  var combinedMatrix = mat4.create();
+
+  // Translate to origin
+  mat4.translate(
+    combinedMatrix,
+    combinedMatrix,
+    vec3.fromValues(...transform.origin)
+  );
+
+  // Rotate around the specified axis
+  if (theta !== 0) {
+    mat4.rotate(
+      combinedMatrix,
+      combinedMatrix,
+      theta,
+      vec3.fromValues(...transform.rotation_axis)
+    );
+  }
+
+  // Scale
+  mat4.scale(
+    combinedMatrix,
+    combinedMatrix,
+    vec3.fromValues(transform.x_scale, transform.y_scale, transform.z_scale)
+  );
+
+  // Translate back
+  mat4.translate(
+    combinedMatrix,
+    combinedMatrix,
+    vec3.fromValues(
+      -transform.origin[0],
+      -transform.origin[1],
+      -transform.origin[2]
+    )
+  );
+
+  return combinedMatrix;
+}
+export { transforms, transition_matrix, perspective, getAffineTransform3D };

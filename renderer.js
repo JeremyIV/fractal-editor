@@ -1,6 +1,5 @@
-import { transforms, perspective } from "./transforms.js";
+import { transforms, perspective, getAffineTransform3D } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
-import { getAffineTransform3D } from "./matrices.js";
 
 let MILLION_TRI_SIZE = 0.003;
 

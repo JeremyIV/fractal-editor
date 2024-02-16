@@ -113,7 +113,7 @@ function createTransformForm(index) {
       <label>Z <input type="number" value="${transform.z_scale}" data-index="${index}" data-property="z_scale"></label>
     </div>
     <div class="form-row">
-      <label>Rotation <input type="number" value="${transform.degrees_rotation}" data-index="${index}" data-property="degrees_rotation"></label>
+      <label>↺ <input type="number" value="${transform.degrees_rotation}" data-index="${index}" data-property="degrees_rotation"></label>
       <label>X <input type="number" value="${transform.rotation_axis[0]}" data-index="${index}" data-property="rotation_axis_x"></label>
       <label>Y <input type="number" value="${transform.rotation_axis[1]}" data-index="${index}" data-property="rotation_axis_y"></label>
       <label>Z <input type="number" value="${transform.rotation_axis[2]}" data-index="${index}" data-property="rotation_axis_z"></label>

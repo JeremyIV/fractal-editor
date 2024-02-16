@@ -179,8 +179,6 @@ function drawScene(quick, first_pass) {
 
   gl.bindVertexArray(vao);
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points
-
-  console.log(new Date().getTime() - startTime);
 }
 
 function resizeCanvas() {

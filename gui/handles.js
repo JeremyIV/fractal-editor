@@ -24,22 +24,23 @@ function getAngle(x0, y0, x1, y1) {
   return angle;
 }
 
-function getViewAxis(projectionMatrix) {
-  // Extract the first three rows and columns to form a 3x3 matrix
-  let mat3x3 = [
-    [projectionMatrix[0], projectionMatrix[1], projectionMatrix[2]],
-    [projectionMatrix[4], projectionMatrix[5], projectionMatrix[6]],
-    [projectionMatrix[8], projectionMatrix[9], projectionMatrix[10]],
-  ];
+function rotateVec3(vector, theta, phi) {
+  // Create a quaternion for rotation around the Y-axis by theta
+  let qY = quat.create();
+  quat.rotateY(qY, qY, theta);
 
-  // The goal vector [0, 0, 1] is on the right side of the equation
-  let goal = [0, 0, 1];
+  // Create a quaternion for rotation around the X-axis by phi
+  let qX = quat.create();
+  quat.rotateX(qX, qX, phi);
 
-  // Solve the linear system mat3x3 * x = goal for x
-  // This can be done via various methods; here, we assume a solver function is available
-  let viewAxis = numeric.solve(mat3x3, goal);
+  // Combine the two rotations
+  let qCombined = quat.create();
+  quat.multiply(qCombined, qY, qX);
 
-  return viewAxis;
+  // Apply the combined rotation to the vector
+  vec3.transformQuat(vector, vector, qCombined);
+
+  return vector;
 }
 
 function convertTouchEvent(event) {
@@ -213,7 +214,7 @@ function canvasMouseDown(e) {
     // And assuming projectionMatrix is available and correctly set up
     const angle = getAngle(originX, originY, x, y) - clickStartAngle;
     const angleRadians = angle * (Math.PI / 180);
-    const axis = getViewAxis(perspective); // Ensure this returns a vec3 or similar structure
+    const axis = rotateVec3(vec3.fromValues(0, 0, 1), -theta, -phi); // Ensure this returns a vec3 or similar structure
     // Create quaternions for the delta rotation and the old rotation
     let delta_rotation_quaternion = quat.create();
     quat.setAxisAngle(delta_rotation_quaternion, axis, angleRadians); // Set delta rotation based on axis and angle

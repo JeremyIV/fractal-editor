@@ -204,9 +204,9 @@ function canvasMouseDown(e) {
     const distance = getDistance(originX, originY, x, y);
     const distance_ratio = distance / clickStartDistance;
 
-    transform.x_scale = oldScalingValue[0] * distance_ratio;
-    transform.y_scale = oldScalingValue[1] * distance_ratio;
-    transform.z_scale = oldScalingValue[2] * distance_ratio;
+    transform.x_scale = Math.min(oldScalingValue[0] * distance_ratio, 1);
+    transform.y_scale = Math.min(oldScalingValue[1] * distance_ratio, 1);
+    transform.z_scale = Math.min(oldScalingValue[2] * distance_ratio, 1);
 
     // ROTATION
     // Assuming getAngle and getViewAxis are provided

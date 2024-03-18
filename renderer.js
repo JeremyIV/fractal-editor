@@ -1,13 +1,15 @@
 import { transforms, perspective, getAffineTransform3D } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
 
-let MILLION_TRI_SIZE = 0.003;
-
-let MAX_POINTS = 100_000;
-let QUICK_MAX_POINTS = 10_000;
+let MAX_POINTS = 1_000_000;
+let QUICK_MAX_POINTS = 100_000;
 
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { depth: true });
+const SPHERE_RADIUS = 0.005;
+const QUICK_SPHERE_RADIUS = Math.sqrt(
+  (SPHERE_RADIUS * SPHERE_RADIUS * MAX_POINTS) / QUICK_MAX_POINTS
+);
 
 if (!gl) {
   alert("WebGL 2.0 not supported");
@@ -18,6 +20,9 @@ if (!gl) {
 gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL);
 gl.clearDepth(1.0); // Clear everything
+
+//gl.enable(gl.BLEND);
+//gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
 // ADDITIVE FRAGMENTS (glowing light effect)
 //gl.depthMask(false);
@@ -82,15 +87,26 @@ function drawScene(quick, first_pass) {
   if (quick === undefined) {
     quick = false;
   }
-  const num_points = quick ? 100_000 : 1_000_000;
+  const num_points = quick ? QUICK_MAX_POINTS : MAX_POINTS;
+  const sphere_radius = quick ? QUICK_SPHERE_RADIUS : SPHERE_RADIUS;
   const recursion_level = quick ? 20 : 50;
   // If the number of points has changed, update the buffer
   if (num_points != bufferedNumPoints) {
     const vertexData = [];
     const indexData = [];
     for (let i = 0; i < num_points; i++) {
-      vertexData.push(0.0, 0.0);
-      indexData.push(i);
+      // TODO: push an equilateral triangle with verts SPHERE_RADIUS*2 away from origin
+      vertexData.push(
+        sphere_radius * 2,
+        0.0,
+        -sphere_radius,
+        Math.sqrt(3) * sphere_radius,
+        -sphere_radius,
+        -Math.sqrt(3) * sphere_radius
+      );
+      for (let j = 0; j < 3; j++) {
+        indexData.push(i);
+      }
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(
@@ -171,13 +187,14 @@ function drawScene(quick, first_pass) {
 
   gl.uniform1f(gl.getUniformLocation(program, "uN"), num_points);
   gl.uniform1f(gl.getUniformLocation(program, "uR"), recursion_level);
+  gl.uniform1f(gl.getUniformLocation(program, "uSphereRadius"), sphere_radius);
 
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
   gl.clearColor(0, 0, 0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.bindVertexArray(vao);
-  gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points
+  gl.drawArrays(gl.TRIANGLES, 0, num_points); // Draw N points
 }
 
 function resizeCanvas() {
@@ -190,6 +207,7 @@ function resizeCanvas() {
   // Redraw the scene
   drawScene(); // Make sure this function redraws your WebGL scene
 }
+
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas(); // Call it once to set initial size
 

@@ -24,22 +24,9 @@ function getAngle(x0, y0, x1, y1) {
   return angle;
 }
 
-function rotateVec3(vector, theta, phi) {
-  // Create a quaternion for rotation around the Y-axis by theta
-  let qY = quat.create();
-  quat.rotateY(qY, qY, theta);
-
-  // Create a quaternion for rotation around the X-axis by phi
-  let qX = quat.create();
-  quat.rotateX(qX, qX, phi);
-
-  // Combine the two rotations
-  let qCombined = quat.create();
-  quat.multiply(qCombined, qY, qX);
-
-  // Apply the combined rotation to the vector
-  vec3.transformQuat(vector, vector, qCombined);
-
+// Simplified for 2D - just returns the vector unchanged
+function rotateVec3(vector) {
+  // In 2D mode, we don't need to rotate vectors in 3D space
   return vector;
 }
 
@@ -133,31 +120,57 @@ function handleMouseDown(e) {
   registerDragEvents(onMove);
 }
 
-// Function to update the 'perspective' matrix
-let theta = 0; // Azimuthal angle
-let phi = 0; // Polar angle
+// Panning state
+let panX = 0;
+let panY = 0;
+let lastMouseX = 0;
+let lastMouseY = 0;
 
+// Convert mouse movement to world-space movement, accounting for perspective
+function getPanAmountForMouseMovement(dx, dy) {
+  // Get the canvas dimensions for scaling
+  const rect = canvas.getBoundingClientRect();
+  const canvasWidth = rect.width;
+  const canvasHeight = rect.height;
+
+  // Note: We're calculating the scale directly based on the viewport
+  // This gives us a consistent panning behavior
+  
+  // Calculate the scale factor based on aspect ratio
+  const aspectRatio = canvasWidth / canvasHeight;
+  let scaleX, scaleY;
+  
+  if (canvasWidth > canvasHeight) {
+    scaleX = 2 * aspectRatio / canvasWidth;
+    scaleY = 2 / canvasHeight;
+  } else {
+    scaleX = 2 / canvasWidth;
+    scaleY = 2 / aspectRatio / canvasHeight;
+  }
+  
+  // Calculate how much to move in world-space
+  // The negative sign for dx will invert the panning direction horizontally
+  // This makes it feel like you're grabbing the scene
+  return {
+    worldDx: dx * scaleX,
+    worldDy: -dy * scaleY
+  };
+}
+
+// Function to update the 'perspective' matrix (kept name for compatibility)
 function updateRotation(dx, dy) {
-  // Update theta and phi based on dx and dy
-  // Adjust these scaling factors as needed for sensitivity
-  const thetaScale = 0.01;
-  const phiScale = 0.01;
-
-  theta += dx * thetaScale;
-  phi += dy * phiScale; // Inverting dy to match the screen's coordinate system
-
-  // Clamp phi to prevent the camera from flipping over
-  // This restricts the elevation angle to be between -90 and 90 degrees
-  //phi = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, phi));
-
+  // Calculate world-space movement based on mouse movement
+  const { worldDx, worldDy } = getPanAmountForMouseMovement(dx, dy);
+  
+  // Update pan position
+  panX += worldDx;
+  panY += worldDy;
+  
   // Reset the perspective matrix
   mat4.identity(perspective);
-
-  // First, rotate around the Y axis (theta)
-  mat4.rotate(perspective, perspective, theta, [0, 1, 0]);
-
-  // Then, rotate around the X axis (phi)
-  mat4.rotate(perspective, perspective, phi, [1, 0, 0]);
+  
+  // Apply translation for panning
+  mat4.translate(perspective, perspective, [panX, panY, 0]);
 }
 
 function canvasMouseDown(e) {
@@ -165,18 +178,18 @@ function canvasMouseDown(e) {
     e.preventDefault();
   }
 
-  // If no transform is slected, rotate the view perspective
+  // If no transform is selected, pan the view
   if (selectedTransformIndex === null) {
-    // rotate the viewport
-    let lastX = e.clientX;
-    let lastY = e.clientY;
+    // Pan the viewport (previously "rotate the viewport")
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
 
     function onMove(x, y) {
-      const dx = x - lastX;
-      const dy = y - lastY;
+      const dx = x - lastMouseX;
+      const dy = y - lastMouseY;
       updateRotation(dx, dy);
-      lastX = x;
-      lastY = y;
+      lastMouseX = x;
+      lastMouseY = y;
     }
     registerDragEvents(onMove);
     return;
@@ -214,7 +227,7 @@ function canvasMouseDown(e) {
     // And assuming projectionMatrix is available and correctly set up
     const angle = getAngle(originX, originY, x, y) - clickStartAngle;
     const angleRadians = angle * (Math.PI / 180);
-    const axis = rotateVec3(vec3.fromValues(0, 0, 1), -theta, -phi); // Ensure this returns a vec3 or similar structure
+    const axis = vec3.fromValues(0, 0, 1); // Fixed Z-axis rotation for 2D mode
     // Create quaternions for the delta rotation and the old rotation
     let delta_rotation_quaternion = quat.create();
     quat.setAxisAngle(delta_rotation_quaternion, axis, angleRadians); // Set delta rotation based on axis and angle

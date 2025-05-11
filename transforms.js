@@ -35,12 +35,7 @@ let transition_matrix = [
 ];
 let perspective = mat4.create();
 
-perspective = mat4.rotate(
-  perspective,
-  perspective,
-  (0 * Math.PI) / 180,
-  vec3.fromValues(0, 1, 0)
-);
+// Initialize with identity matrix for 2D mode (no rotation)
 
 window.transforms = transforms;
 window.transition_matrix = transition_matrix;

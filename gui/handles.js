@@ -293,17 +293,20 @@ function to_canvas_coords(webGL_coords) {
   coords4D = coords4D.map((v) => v / coords4D[3]);
 
   // Convert to canvas coordinates
-  const canvasX = canvas.width / 2 + (canvas.width / 4) * coords4D[0];
-  const canvasY = canvas.height / 2 - (canvas.height / 4) * coords4D[1];
+  //const canvasX = canvas.width / 2 + (canvas.width / 4) * coords4D[0];
+  //const canvasY = canvas.height / 2 - (canvas.height / 4) * coords4D[1];
+  const canvasX = canvas.width / 2 + (canvas.width / 2) * coords4D[0];
+  const canvasY = canvas.height / 2 - (canvas.height / 2) * coords4D[1];
 
   return [canvasX, canvasY];
 }
 
 function update_old_coord(old_coords, canvas_coords) {
   // Convert canvas coordinates back to normalized device coordinates
-  const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 4);
-  const surfaceY =
-    (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 4);
+  //const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 4);
+  //const surfaceY = (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 4);
+  const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 2);
+  const surfaceY = (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 2);
 
   // Apply the projection matrix to the old coordinates
   let projectedCoords = [old_coords[0], old_coords[1], old_coords[2], 1.0];

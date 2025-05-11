@@ -1,6 +1,6 @@
 const transforms = [
   {
-    origin: [0, 1, 0],
+    origin: [0, .5, 0],
     degrees_rotation: 0,
     rotation_axis: [0, 0, 1],
     x_scale: 0.5,
@@ -9,7 +9,7 @@ const transforms = [
     color: [1, 0, 0, 0.5],
   },
   {
-    origin: [-1.5, -1.5, 0],
+    origin: [-1.5/2, -1.5/2, 0],
     degrees_rotation: 0,
     rotation_axis: [0, 0, 1],
     x_scale: 0.5,
@@ -18,7 +18,7 @@ const transforms = [
     color: [0, 1, 0, 0.5],
   },
   {
-    origin: [1.5, -1.5, 0],
+    origin: [1.5/2, -1.5/2, 0],
     degrees_rotation: 0,
     rotation_axis: [0, 0, 1],
     x_scale: 0.5,

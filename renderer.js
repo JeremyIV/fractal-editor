@@ -95,18 +95,9 @@ function drawScene(quick, first_pass) {
     const vertexData = [];
     const indexData = [];
     for (let i = 0; i < num_points; i++) {
-      // TODO: push an equilateral triangle with verts SPHERE_RADIUS*2 away from origin
-      vertexData.push(
-        sphere_radius * 2,
-        0.0,
-        -sphere_radius,
-        Math.sqrt(3) * sphere_radius,
-        -sphere_radius,
-        -Math.sqrt(3) * sphere_radius
-      );
-      for (let j = 0; j < 3; j++) {
-        indexData.push(i);
-      }
+      // Just use a single position for each point (0,0) since they'll be transformed anyway
+      vertexData.push(0.0, 0.0);
+      indexData.push(i);
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(
@@ -194,7 +185,7 @@ function drawScene(quick, first_pass) {
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   gl.bindVertexArray(vao);
-  gl.drawArrays(gl.TRIANGLES, 0, num_points); // Draw N points
+  gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
 }
 
 function resizeCanvas() {

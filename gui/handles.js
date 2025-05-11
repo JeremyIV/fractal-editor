@@ -120,13 +120,14 @@ function handleMouseDown(e) {
   registerDragEvents(onMove);
 }
 
-// Panning state
+// Panning and zooming state
 let panX = 0;
 let panY = 0;
 let lastMouseX = 0;
 let lastMouseY = 0;
+let zoomLevel = 1.0;
 
-// Convert mouse movement to world-space movement, accounting for perspective
+// Convert mouse movement to world-space movement, accounting for perspective and zoom
 function getPanAmountForMouseMovement(dx, dy) {
   // Get the canvas dimensions for scaling
   const rect = canvas.getBoundingClientRect();
@@ -148,9 +149,12 @@ function getPanAmountForMouseMovement(dx, dy) {
     scaleY = 2 / aspectRatio / canvasHeight;
   }
   
+  // Adjust the scale based on the current zoom level
+  // Divide by zoomLevel to move less in world space when zoomed in
+  scaleX = scaleX / zoomLevel;
+  scaleY = scaleY / zoomLevel;
+  
   // Calculate how much to move in world-space
-  // The negative sign for dx will invert the panning direction horizontally
-  // This makes it feel like you're grabbing the scene
   return {
     worldDx: dx * scaleX,
     worldDy: -dy * scaleY
@@ -166,10 +170,18 @@ function updateRotation(dx, dy) {
   panX += worldDx;
   panY += worldDy;
   
+  updatePerspectiveMatrix();
+}
+
+// Apply current zoom and pan to the perspective matrix
+function updatePerspectiveMatrix() {
   // Reset the perspective matrix
   mat4.identity(perspective);
   
-  // Apply translation for panning
+  // Apply zoom (scale) first
+  mat4.scale(perspective, perspective, [zoomLevel, zoomLevel, 1]);
+  
+  // Then apply translation for panning
   mat4.translate(perspective, perspective, [panX, panY, 0]);
 }
 
@@ -275,7 +287,48 @@ function canvasMouseDown(e) {
   registerDragEvents(onMove, onUp);
 }
 
+// Zoom with mouse wheel
+function handleMouseWheel(e) {
+  e.preventDefault();
+  
+  // Get mouse position relative to canvas
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  
+  // Convert mouse position to normalized device coordinates (NDC)
+  const ndcX = (mouseX / canvas.width) * 2 - 1;
+  const ndcY = -((mouseY / canvas.height) * 2 - 1); // Y is flipped in WebGL
+  
+  // Convert mouse position to world coordinates before zoom
+  const worldX = ndcX / zoomLevel - panX;
+  const worldY = ndcY / zoomLevel - panY;
+  
+  // Determine zoom direction and amount
+  const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9; // Zoom in or out
+  
+  // Update zoom level with limits
+  const oldZoomLevel = zoomLevel;
+  zoomLevel = Math.max(0.1, Math.min(100, zoomLevel * zoomFactor));
+  
+  // Calculate how much the world coordinates of the mouse point changed due to zooming
+  const newWorldX = ndcX / zoomLevel - panX;
+  const newWorldY = ndcY / zoomLevel - panY;
+  
+  // Adjust pan to keep the mouse over the same world point
+  panX += (newWorldX - worldX);
+  panY += (newWorldY - worldY);
+  
+  // Update the perspective matrix
+  updatePerspectiveMatrix();
+  
+  // Redraw the scene
+  drawScene();
+  repositionHandles();
+}
+
 canvas.addEventListener("mousedown", canvasMouseDown);
+canvas.addEventListener("wheel", handleMouseWheel, { passive: false });
 canvas.addEventListener(
   "touchstart",
   function (event) {

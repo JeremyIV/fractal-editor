@@ -309,7 +309,7 @@ function handleMouseWheel(e) {
   
   // Update zoom level with limits
   const oldZoomLevel = zoomLevel;
-  zoomLevel = Math.max(0.1, Math.min(100, zoomLevel * zoomFactor));
+  zoomLevel = Math.max(0.1, Math.min(1000, zoomLevel * zoomFactor));
   
   // Calculate how much the world coordinates of the mouse point changed due to zooming
   const newWorldX = ndcX / zoomLevel - panX;

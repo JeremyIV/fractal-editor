@@ -4,8 +4,11 @@ import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
 let MAX_POINTS = 1_000_000;
 let QUICK_MAX_POINTS = 100_000;
 
+let POINT_SIZE = 1.0
+let QUICK_POINT_SIZE = Math.sqrt(MAX_POINTS / QUICK_MAX_POINTS)
+
 const canvas = document.getElementById("glCanvas");
-const gl = canvas.getContext("webgl2", { depth: true });
+const gl = canvas.getContext("webgl2", { depth: true, preserveDrawingBuffer: true });
 const SPHERE_RADIUS = 0.005;
 const QUICK_SPHERE_RADIUS = Math.sqrt(
   (SPHERE_RADIUS * SPHERE_RADIUS * MAX_POINTS) / QUICK_MAX_POINTS
@@ -49,15 +52,74 @@ let bufferedNumPoints = 0;
 
 let projectionMatrix = mat4.create();
 
+// VAO will be created after program is ready
+let vao = null;
+
+// Progressive rendering state
+let isProgressiveMode = false;
+let currentPassCount = 0;
+let progressiveAnimationId = null;
+
+// Helper to safely set uniforms
+function setUniform1f(name, value) {
+  const loc = gl.getUniformLocation(program, name);
+  if (loc !== null) {
+    gl.uniform1f(loc, value);
+  }
+}
+
 function drawScene(quick, first_pass) {
-  if (first_pass) {
+  // Cancel any existing progressive rendering
+  if (progressiveAnimationId !== null) {
+    cancelAnimationFrame(progressiveAnimationId);
+    progressiveAnimationId = null;
+  }
+
+  // Determine rendering mode
+  if (quick === true) {
+    // Quick mode: single render with quick settings
+    isProgressiveMode = false;
+    currentPassCount = 0;
+    renderSinglePass(true, true);
+  } else if (first_pass === false) {
+    // Explicit non-clearing single render
+    isProgressiveMode = false;
+    renderSinglePass(false, false);
+  } else {
+    // Progressive mode: start continuous rendering
+    isProgressiveMode = true;
+    currentPassCount = 0;
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    startProgressiveRendering();
+  }
+}
+
+function startProgressiveRendering() {
+  function animate() {
+    renderSinglePass(false, false);
+    currentPassCount++;
+    
+    if (isProgressiveMode) {
+      progressiveAnimationId = requestAnimationFrame(animate);
+    }
+  }
+  
+  animate();
+}
+
+function renderSinglePass(quick, shouldClear) {
+  if (shouldClear) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
   gl.useProgram(program);
+  
+  // Create VAO if needed
+  if (!vao) {
+    vao = gl.createVertexArray();
+  }
 
   // PROJECTION MATRIX
-
   const aspectRatio = canvas.width / canvas.height;
 
   if (canvas.width > canvas.height) {
@@ -83,13 +145,11 @@ function drawScene(quick, first_pass) {
   gl.uniformMatrix4fv(uProjectionMatrixLoc, false, projectionMatrix);
 
   // POINT AND INDEX BUFFERS
-
-  if (quick === undefined) {
-    quick = false;
-  }
   const num_points = quick ? QUICK_MAX_POINTS : MAX_POINTS;
+  const point_size = quick ? QUICK_POINT_SIZE : POINT_SIZE;
   const sphere_radius = quick ? QUICK_SPHERE_RADIUS : SPHERE_RADIUS;
   const recursion_level = quick ? 20 : 50;
+  
   // If the number of points has changed, update the buffer
   if (num_points != bufferedNumPoints) {
     const vertexData = [];
@@ -110,25 +170,31 @@ function drawScene(quick, first_pass) {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(indexData), gl.STATIC_DRAW);
 
     bufferedNumPoints = num_points;
+    
+    // Set up VAO when buffers change
+    gl.bindVertexArray(vao);
+    
+    const positionLocation = gl.getAttribLocation(program, "aPosition");
+    if (positionLocation >= 0) {
+      gl.enableVertexAttribArray(positionLocation);
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    const indexLocation = gl.getAttribLocation(program, "aIndex");
+    if (indexLocation >= 0) {
+      gl.enableVertexAttribArray(indexLocation);
+      gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
+      gl.vertexAttribPointer(indexLocation, 1, gl.FLOAT, false, 0, 0);
+    }
+    
+    gl.bindVertexArray(null);
   }
-  let startTime = new Date().getTime();
-  const vao = gl.createVertexArray();
-  gl.bindVertexArray(vao);
-  const positionLocation = gl.getAttribLocation(program, "aPosition");
-  gl.enableVertexAttribArray(positionLocation);
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
-  const indexLocation = gl.getAttribLocation(program, "aIndex");
-  gl.enableVertexAttribArray(indexLocation);
-  gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-  gl.vertexAttribPointer(indexLocation, 1, gl.FLOAT, false, 0, 0);
-
+  
   const numTransforms = transforms.length;
 
   // Set the uNumTransforms uniform
-  const numTransformsLoc = gl.getUniformLocation(program, "uNumTransforms");
-  gl.uniform1f(numTransformsLoc, numTransforms);
+  setUniform1f("uNumTransforms", numTransforms);
 
   // Identity matrix
   const I = {
@@ -176,16 +242,21 @@ function drawScene(quick, first_pass) {
   gl.uniformMatrix4fv(transformLoc, false, flattenedTransforms);
   gl.uniform4fv(colorLoc, flattenedColors);
 
-  gl.uniform1f(gl.getUniformLocation(program, "uN"), num_points);
-  gl.uniform1f(gl.getUniformLocation(program, "uR"), recursion_level);
-  gl.uniform1f(gl.getUniformLocation(program, "uSphereRadius"), sphere_radius);
+  setUniform1f("uN", num_points);
+  setUniform1f("uR", recursion_level);
+  setUniform1f("uSphereRadius", sphere_radius);
+  
+  // Set the pass count uniform for randomization
+  setUniform1f("uPassCount", currentPassCount);
+  setUniform1f("uPointSize", point_size);
+
 
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-  gl.clearColor(0, 0, 0, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT);
 
+  // Bind the VAO and draw
   gl.bindVertexArray(vao);
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
+  gl.bindVertexArray(null);
 }
 
 function resizeCanvas() {
@@ -195,8 +266,16 @@ function resizeCanvas() {
 
   gl.viewport(0, 0, canvas.width, canvas.height);
 
-  // Redraw the scene
-  drawScene(); // Make sure this function redraws your WebGL scene
+  // Stop progressive rendering on resize and do a single clear render
+  isProgressiveMode = false;
+  if (progressiveAnimationId !== null) {
+    cancelAnimationFrame(progressiveAnimationId);
+    progressiveAnimationId = null;
+  }
+  
+  // Single render after resize
+  currentPassCount = 0;
+  renderSinglePass(false, true);
 }
 
 window.addEventListener("resize", resizeCanvas);

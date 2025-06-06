@@ -8,7 +8,9 @@ in float aIndex;
 
 out vec4 vColor; // Pass the computed color to the fragment shader
 
+uniform float uPassCount;
 uniform float uR; 
+uniform float uPointSize;
 uniform float uNumTransforms;
 uniform float uCumulativeMarkovMatrix[110];
 uniform mat4 uTransforms[10];
@@ -29,7 +31,7 @@ float getRandomFloat(int randomInt) {
 void main() {
     vec4 offset = vec4(0.0, 0.0, 0.0, 1.0);
     vec4 transformedColor = vec4(0.0, 0.0, 0.0, 0.0);
-    int randomInt = int(aIndex);
+    int randomInt = int(aIndex) + int(uPassCount) * 1000000;
     int last_transform = -1;
 
     for (int i=0; i < MAX_R; i++) {
@@ -62,7 +64,7 @@ void main() {
     
     vColor = transformedColor;
     gl_Position = uProjectionMatrix * offset;
-    gl_PointSize = 1.0; // Keep the original point size
+    gl_PointSize = uPointSize;
 }`;
 
 const fragmentShaderSource = `#version 300 es

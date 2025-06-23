@@ -452,6 +452,18 @@ function repositionHandles() {
     }
   });
 }
+
+function recreateHandles() {
+  // Remove all existing handles
+  const existingHandles = document.querySelectorAll(".control-handle");
+  existingHandles.forEach(handle => handle.remove());
+  
+  // Clear selection
+  selectedTransformIndex = null;
+  
+  // Create new handles for current transforms
+  createHandles();
+}
 window.addEventListener("resize", repositionHandles);
 
-export { createHandles, repositionHandles };
+export { createHandles, repositionHandles, recreateHandles };

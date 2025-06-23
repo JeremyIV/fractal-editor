@@ -8,6 +8,7 @@
     <canvas id="glCanvas"></canvas>
     <!-- <button id="toggle-rotate">Toggle Rotate</button> -->
     <button id="menu-toggle">☰</button>
+    <button id="database-menu-toggle">💾</button>
     <div id="transform-gui">
       <a href="javascript:void(0)" id="closeToolbar" class="closeToolbar">×</a>
       <div id="transform-forms">
@@ -17,9 +18,28 @@
       <button id="add-transform">+</button>
     </div>
 
+    <div id="database-gui">
+      <a href="javascript:void(0)" id="closeDatabaseToolbar" class="closeToolbar">×</a>
+      <div id="database-content">
+        <div id="save-section">
+          <h3>Save Fractal</h3>
+          <input type="text" id="fractal-name" placeholder="Enter fractal name..." />
+          <button id="save-fractal-btn">Save</button>
+        </div>
+        <div id="load-section">
+          <h3>Load Fractal</h3>
+          <div id="fractal-list">
+            <!-- Fractal list will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Link to the external JavaScript files -->
     <script src="./markov.js"></script>
+    <script type="module" src="./database.js"></script>
     <script type="module" src="gui/toggle_toolbar.js"></script>
+    <script type="module" src="gui/database_gui.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/gl-matrix@2.4.0/dist/gl-matrix-min.js"></script>
     <script type="module" src="./matrices.js"></script>
     <script type="module" src="./shaders.js"></script>

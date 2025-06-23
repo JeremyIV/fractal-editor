@@ -5,6 +5,7 @@
   ],
   "rewrites": [
     { "source": "/api/get/:id", "destination": "/api/get/[id].js?id=:id" },
+    { "source": "/api/list", "destination": "/api/get/list.js" },
     { "source": "/api/upload", "destination": "/api/set/upload.js" }
   ],
   "headers": [

@@ -2,6 +2,7 @@
 import { drawScene } from "./renderer.js";
 import { recreateHandles } from "./gui/handles.js";
 import { reRenderTransformForms } from "./gui/transforms_form.js";
+import { refreshTransitionMatrixUI } from "./gui/transition_matrix.js";
 
 // Get your Vercel API base URL here - replace with your actual deployment URL
 //const API_BASE_URL = 'http://localhost:3000'; // Change to your Vercel URL when deployed
@@ -21,9 +22,16 @@ async function save_fractal(name) {
     throw new Error('No transforms found. Make sure transforms are loaded.');
   }
 
+  if (!window.transition_matrix || !Array.isArray(window.transition_matrix)) {
+    throw new Error('No transition matrix found. Make sure transition matrix is loaded.');
+  }
+
   const fractalData = {
     name: name,
-    data: window.transforms,
+    data: {
+      transforms: window.transforms,
+      transition_matrix: window.transition_matrix
+    },
     created_at: new Date().toISOString()
   };
 
@@ -73,13 +81,26 @@ async function load_fractal(id) {
 
     const fractal = await response.json();
     
-    if (!fractal.data || !Array.isArray(fractal.data)) {
+    if (!fractal.data || typeof fractal.data !== 'object') {
       throw new Error('Invalid fractal data format');
     }
 
-    // Apply the loaded transforms to the global transforms array
+    if (!Array.isArray(fractal.data.transforms)) {
+      throw new Error('Invalid fractal data: transforms must be an array');
+    }
+
+    if (!Array.isArray(fractal.data.transition_matrix)) {
+      throw new Error('Invalid fractal data: transition_matrix must be an array');
+    }
+
+    // Apply the loaded data to the global arrays
     window.transforms.length = 0; // Clear existing transforms
-    window.transforms.push(...fractal.data); // Add loaded transforms
+    window.transforms.push(...fractal.data.transforms); // Add loaded transforms
+    
+    window.transition_matrix.length = 0; // Clear existing transition matrix
+    fractal.data.transition_matrix.forEach((row, i) => {
+      window.transition_matrix[i] = [...row]; // Deep copy each row
+    });
 
     console.log(`Fractal "${fractal.name}" loaded successfully`);
     console.log('Transforms updated. The fractal should now be visible.');
@@ -87,6 +108,7 @@ async function load_fractal(id) {
     // Update all UI components for the new transforms
     recreateHandles();
     reRenderTransformForms();
+    refreshTransitionMatrixUI();
     drawScene();
     return fractal;
   } catch (error) {

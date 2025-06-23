@@ -1,6 +1,32 @@
 import { transforms, transition_matrix } from "../transforms.js";
 import { drawScene } from "../renderer.js";
 
+function refreshTransitionMatrixUI() {
+  const existingGui = document.getElementById("transition-matrix-gui");
+  if (!existingGui) {
+    return; // UI is not currently open, nothing to refresh
+  }
+
+  // Check if the matrix size has changed - if so, recreate the entire UI
+  const currentCheckboxes = existingGui.querySelectorAll("input[type='checkbox']");
+  const expectedSize = transition_matrix.length * transition_matrix.length;
+  
+  if (currentCheckboxes.length !== expectedSize) {
+    // Size mismatch - close and recreate the UI
+    existingGui.remove();
+    // Don't automatically reopen - let user click the button if they want to see it
+    return;
+  }
+
+  // Size matches - just update checkbox states
+  const size = transition_matrix.length;
+  for (let i = 0; i < size; i++) {
+    for (let j = 0; j < size; j++) {
+      currentCheckboxes[i * size + j].checked = transition_matrix[i][j];
+    }
+  }
+}
+
 function updateTransitionMatrix(e) {
   const checkboxes = document.querySelectorAll(
     "#transition-matrix-gui input[type='checkbox']"
@@ -66,3 +92,5 @@ document
 
     drawScene();
   });
+
+export { refreshTransitionMatrixUI };

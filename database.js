@@ -4,7 +4,8 @@ import { recreateHandles } from "./gui/handles.js";
 import { reRenderTransformForms } from "./gui/transforms_form.js";
 
 // Get your Vercel API base URL here - replace with your actual deployment URL
-const API_BASE_URL = 'http://localhost:3000'; // Change to your Vercel URL when deployed
+//const API_BASE_URL = 'http://localhost:3000'; // Change to your Vercel URL when deployed
+const API_BASE_URL = "https://fractal-kgywu5as1-jeremys-projects-37bbb7cf.vercel.app"
 
 /**
  * Save the current fractal to the database

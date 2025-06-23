@@ -1,0 +1,16 @@
+{
+  "name": "fractal-editor-backend",
+  "version": "1.0.0",
+  "description": "Backend API for fractal editor",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "mongodb": "^6.14.2"
+  },
+  "devDependencies": {
+    "vercel": "^33.1.0"
+  }
+}

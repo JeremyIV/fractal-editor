@@ -59,8 +59,10 @@ function registerDragEvents(onMove, onUp) {
       e.preventDefault();
     }
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const parentRect = canvas.parentElement.getBoundingClientRect();
+    // Calculate mouse position relative to canvas container (parent element)
+    const x = e.clientX - parentRect.left;
+    const y = e.clientY - parentRect.top;
 
     onMove(x, y);
 
@@ -193,8 +195,10 @@ function canvasMouseDown(e) {
   // If no transform is selected, pan the view
   if (selectedTransformIndex === null) {
     // Pan the viewport (previously "rotate the viewport")
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
+    const rect = canvas.getBoundingClientRect();
+    const parentRect = canvas.parentElement.getBoundingClientRect();
+    lastMouseX = e.clientX - parentRect.left;
+    lastMouseY = e.clientY - parentRect.top;
 
     function onMove(x, y) {
       const dx = x - lastMouseX;
@@ -212,8 +216,10 @@ function canvasMouseDown(e) {
   const originX = originCoords[0];
   const originY = originCoords[1];
   const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX - rect.left;
-  const mouseY = e.clientY - rect.top;
+  const parentRect = canvas.parentElement.getBoundingClientRect();
+  // Calculate mouse position relative to canvas container (parent element)
+  const mouseX = e.clientX - parentRect.left;
+  const mouseY = e.clientY - parentRect.top;
   const clickStartDistance = getDistance(originX, originY, mouseX, mouseY);
   const clickStartAngle = getAngle(originX, originY, mouseX, mouseY);
   const oldRotationDegrees = transform.degrees_rotation;
@@ -345,21 +351,29 @@ function to_canvas_coords(webGL_coords) {
   // Normalize the coordinates (homogeneous division)
   coords4D = coords4D.map((v) => v / coords4D[3]);
 
-  // Convert to canvas coordinates
-  //const canvasX = canvas.width / 2 + (canvas.width / 4) * coords4D[0];
-  //const canvasY = canvas.height / 2 - (canvas.height / 4) * coords4D[1];
-  const canvasX = canvas.width / 2 + (canvas.width / 2) * coords4D[0];
-  const canvasY = canvas.height / 2 - (canvas.height / 2) * coords4D[1];
+  // Get canvas position relative to its parent
+  const rect = canvas.getBoundingClientRect();
+  const parentRect = canvas.parentElement.getBoundingClientRect();
+  
+  // Convert to canvas coordinates relative to canvas position
+  const canvasX = (rect.left - parentRect.left) + canvas.width / 2 + (canvas.width / 2) * coords4D[0];
+  const canvasY = (rect.top - parentRect.top) + canvas.height / 2 - (canvas.height / 2) * coords4D[1];
 
   return [canvasX, canvasY];
 }
 
 function update_old_coord(old_coords, canvas_coords) {
+  // Get canvas position relative to its parent
+  const rect = canvas.getBoundingClientRect();
+  const parentRect = canvas.parentElement.getBoundingClientRect();
+  
+  // Adjust canvas coordinates to account for canvas position within parent
+  const adjustedX = canvas_coords[0] - (rect.left - parentRect.left);
+  const adjustedY = canvas_coords[1] - (rect.top - parentRect.top);
+  
   // Convert canvas coordinates back to normalized device coordinates
-  //const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 4);
-  //const surfaceY = (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 4);
-  const surfaceX = (canvas_coords[0] - canvas.width / 2) / (canvas.width / 2);
-  const surfaceY = (canvas_coords[1] - canvas.height / 2) / (-canvas.height / 2);
+  const surfaceX = (adjustedX - canvas.width / 2) / (canvas.width / 2);
+  const surfaceY = (adjustedY - canvas.height / 2) / (-canvas.height / 2);
 
   // Apply the projection matrix to the old coordinates
   let projectedCoords = [old_coords[0], old_coords[1], old_coords[2], 1.0];
@@ -430,7 +444,8 @@ function createHandles() {
         { passive: false }
       );
 
-      document.body.appendChild(handle);
+      // Append to canvas parent instead of body so it moves with the canvas
+      canvas.parentElement.appendChild(handle);
     }
   });
 }

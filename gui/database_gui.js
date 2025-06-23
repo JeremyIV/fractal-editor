@@ -11,11 +11,7 @@ function openDatabaseToolbar() {
   canvas.width = canvas.width - 300;
   document.getElementById("database-menu-toggle").style.display = "none";
   resizeCanvas();
-  
-  // Use setTimeout to ensure DOM updates are complete before repositioning handles
-  setTimeout(() => {
-    repositionHandles();
-  }, 10);
+  repositionHandles();
   
   // Load fractal list when opening
   loadFractalList();
@@ -27,11 +23,7 @@ function closeDatabaseToolbar() {
   canvas.width = canvas.width + 300;
   document.getElementById("database-menu-toggle").style.display = "";
   resizeCanvas();
-  
-  // Use setTimeout to ensure DOM updates are complete before repositioning handles
-  setTimeout(() => {
-    repositionHandles();
-  }, 10);
+  repositionHandles();
 }
 
 // Load and display fractal list

@@ -1,8 +1,10 @@
 import { transforms, perspective, getAffineTransform3D } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
+import { buildPrefixTree } from "./buildPrefixTree.js";
 
 let MAX_POINTS = 1_000_000;
 let QUICK_MAX_POINTS = 100_000;
+  const MAX_PFX = 32;                       // keep small for WebGL uniform limits
 
 let POINT_SIZE = 1.0
 let QUICK_POINT_SIZE = Math.sqrt(MAX_POINTS / QUICK_MAX_POINTS)
@@ -13,6 +15,9 @@ const SPHERE_RADIUS = 0.005;
 const QUICK_SPHERE_RADIUS = Math.sqrt(
   (SPHERE_RADIUS * SPHERE_RADIUS * MAX_POINTS) / QUICK_MAX_POINTS
 );
+// World-space box that certainly encloses the entire attractor.
+// Pick tighter numbers if you know them.
+const ROOT_BOX = { xMin: -1, yMin: -1, xMax: 1, yMax: 1 };
 
 if (!gl) {
   alert("WebGL 2.0 not supported");
@@ -24,19 +29,53 @@ gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL);
 gl.clearDepth(1.0); // Clear everything
 
-//gl.enable(gl.BLEND);
-//gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
-// ADDITIVE FRAGMENTS (glowing light effect)
-//gl.depthMask(false);
-//gl.enable(gl.BLEND);
-//gl.blendFunc(gl.ONE, gl.ONE);
-
 gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
 
 /////////////////////////
 // WEBGL INITIALIZATION
 /////////////////////////
+// ──────────────────────────────────
+//  Bounding-box line shaders
+// ──────────────────────────────────
+const bboxVertexShaderSource = `#version 300 es
+precision mediump float;
+in vec2 aPosition;
+uniform mat4 uProjectionMatrix;
+void main () {
+    gl_Position = uProjectionMatrix * vec4(aPosition, 0.0, 1.0);
+}`;
+const bboxFragmentShaderSource = `#version 300 es
+precision mediump float;
+uniform vec4 uColor;
+out vec4 fragColor;
+void main () { fragColor = uColor; }`;
+// ───── bbox programme + VBOs ─────
+const bboxProg = createProgram(
+  gl,
+  createShader(gl, gl.VERTEX_SHADER,   bboxVertexShaderSource),
+  createShader(gl, gl.FRAGMENT_SHADER, bboxFragmentShaderSource)
+);
+const bboxPosLoc   = gl.getAttribLocation(bboxProg, "aPosition");
+const bboxProjLoc  = gl.getUniformLocation(bboxProg, "uProjectionMatrix");
+const bboxColorLoc = gl.getUniformLocation(bboxProg, "uColor");
+
+// one buffer for the view window, one for the prefix tree
+const viewBoxVBO   = gl.createBuffer();
+let   viewBoxVerts = 0;
+
+const treeBoxVBO   = gl.createBuffer();
+let   treeBoxVerts = 0;
+// ───── debug overlay state ─────
+let currentViewBox = null;   // {xMin,yMin,xMax,yMax}
+
+// console helper: set or update the view box
+function setViewBox(box) {
+  currentViewBox = { ...box };
+  rebuildOverlayBuffers();   // refresh immediately
+}
+window.setViewBox = setViewBox;   // expose to dev-tools
+
+
 const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
 const fragmentShader = createShader(
   gl,
@@ -59,6 +98,48 @@ let vao = null;
 let isProgressiveMode = false;
 let currentPassCount = 0;
 let progressiveAnimationId = null;
+
+// ──────────────────────────────────
+//  Public helpers for the console
+// ──────────────────────────────────
+/**
+ * Accepts the prefix-tree root produced by buildPrefixTree(...)
+ * and rebuilds the line-buffer so it can be over-painted.
+ */
+function setPrefixTreeOverlay(root, options = {}) {
+  const rec           = options.recursive ?? true;   // draw non-terminal too?
+  const colorRGBA     = options.color ?? [1,1,0,0.9]; // default yellow, 90 % α
+  const vertices      = [];
+
+  (function collect(node) {
+    const b = node.box;
+
+    // bottom
+    vertices.push(b.xMin, b.yMin,  b.xMax, b.yMin);
+    // right
+    vertices.push(b.xMax, b.yMin,  b.xMax, b.yMax);
+    // top
+    vertices.push(b.xMax, b.yMax,  b.xMin, b.yMax);
+    // left
+    vertices.push(b.xMin, b.yMax,  b.xMin, b.yMin);
+
+    if (rec || !node.terminal) node.children.forEach(collect);
+  })(root);
+
+  bboxVertexCount = vertices.length / 2;
+  gl.bindBuffer(gl.ARRAY_BUFFER, bboxVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+  // simple state we need while drawing
+  setPrefixTreeOverlay.color = colorRGBA;
+  setPrefixTreeOverlay.enabled = true;
+}
+window.setPrefixTreeOverlay = setPrefixTreeOverlay; // handy for dev-tools
+
+function hidePrefixTreeOverlay() { setPrefixTreeOverlay.enabled = false; }
+window.hidePrefixTreeOverlay = hidePrefixTreeOverlay;
+
 
 // Helper to safely set uniforms
 function setUniform1f(name, value) {
@@ -107,7 +188,139 @@ function startProgressiveRendering() {
   animate();
 }
 
+window.tree = null;
+
+function refreshTransformMatrices() {
+  for (let i = 0; i < transforms.length; ++i) {
+    transforms[i]._matrix = getAffineTransform3D(transforms[i]);
+  }
+}
+
+function rebuildOverlayBuffers() {
+  if (!currentViewBox) {
+    viewBoxVerts = treeBoxVerts = 0;
+    return;
+  }
+
+  // ── (a) rebuild view-window VBO (yellow) ──
+  const b = currentViewBox;
+  const viewVertices = new Float32Array([
+    b.xMin, b.yMin,  b.xMax, b.yMin,  // bottom
+    b.xMax, b.yMin,  b.xMax, b.yMax,  // right
+    b.xMax, b.yMax,  b.xMin, b.yMax,  // top
+    b.xMin, b.yMax,  b.xMin, b.yMin   // left
+  ]);
+  viewBoxVerts = 8; // 8 coords = 4 independent segments
+  gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, viewVertices, gl.STATIC_DRAW);
+
+  // ── (b) rebuild prefix-tree VBO (cyan) ──
+  const tree = buildPrefixTree(
+    ROOT_BOX,                // full-fractal box
+    currentViewBox,          // viewport box
+    transforms,
+    transition_matrix,
+    5                       // maxDepth
+  );
+  truncatePrefixTree(tree, MAX_PFX)
+  window.tree = tree;
+
+  if (!tree) {
+    // viewport misses the fractal: upload one "identity" prefix
+    gl.useProgram(program);
+    gl.uniform1i  (gl.getUniformLocation(program,"uNumPrefixes"), 1);
+    gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"),   [1.0]);
+
+    const I = mat4.create();                         // identity mat4
+    const arr = new Float32Array(16);  // 4×4 → 16
+    arr.set(I);
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program,"uPrefixMatrices"),
+      false,
+      arr
+    );
+
+    treeBoxVerts = 0;   // clear overlay VBO so it draws nothing
+    gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(), gl.STATIC_DRAW);
+    return;             // done with overlay code
+  }
+
+  // ---------------------------------------------------------------
+  // 1. gather terminal prefixes
+  const terminals = [];
+  (function collect(node) {
+    if (node.terminal) { terminals.push(node); return; }
+    node.children.forEach(c => { if (c) collect(c); });
+  })(tree);
+
+  // safety guard
+  const use = terminals.slice(0, MAX_PFX);
+
+  // ---------------------------------------------------------------
+  // 2. build composite matrices (reverse-order product)
+  refreshTransformMatrices();
+  function compositeMatrix(prefix) {
+    let M = mat4.create();                  // identity
+    for (let k = prefix.length - 1; k >= 0; --k) {
+      mat4.multiply(M, transforms[prefix[k]]._matrix, M);
+      // pre-compute _matrix = getAffineTransform3D(t) once at app start
+    }
+    return M;
+  }
+  const mats = use.map(n => compositeMatrix(n.prefix));
+
+  // ---------------------------------------------------------------
+  // 3. optional importance weights (prod |det| is common)
+  const weights = use.map(n => {
+    let w = 1.0;
+    n.prefix.forEach(i => {
+      const t = transforms[i];
+      w *= Math.abs(t.x_scale * t.y_scale * t.z_scale);
+    });
+    return w;
+  });
+  const totalW = weights.reduce((a,b)=>a+b,0);
+  const cdf    = weights.map((w,i)=>weights.slice(0,i+1).reduce((a,b)=>a+b,0)/totalW);
+
+  // ---------------------------------------------------------------
+  // 4. upload uniforms
+  gl.useProgram(program);
+  gl.uniform1i(gl.getUniformLocation(program,"uNumPrefixes"), use.length);
+  gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"), cdf);
+  const pfxMatLoc = gl.getUniformLocation(program, "uPrefixMatrices[0]");
+
+  const flat = new Float32Array(mats.length * 16);   // 16 = 4×4
+  for (let i = 0; i < mats.length; ++i) {
+    flat.set(mats[i], i * 16);      // copy each mat4
+  }
+  gl.uniformMatrix4fv(pfxMatLoc, false, flat);
+
+  const verts = [];
+  (function collect(node) {
+    const bb = node.box;
+    // 4 edges, duplicate vertices so gl.LINES works
+    verts.push(
+      bb.xMin, bb.yMin,  bb.xMax, bb.yMin,
+      bb.xMax, bb.yMin,  bb.xMax, bb.yMax,
+      bb.xMax, bb.yMax,  bb.xMin, bb.yMax,
+      bb.xMin, bb.yMax,  bb.xMin, bb.yMin
+    );
+    node.children.forEach(child => { if (child) collect(child); });
+  })(tree);
+
+  treeBoxVerts = verts.length / 2;
+  gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, null);
+}
+
 function renderSinglePass(quick, shouldClear) {
+
+  // keep overlays in sync every frame
+  if (currentViewBox) rebuildOverlayBuffers();
+
   if (shouldClear) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
@@ -256,6 +469,35 @@ function renderSinglePass(quick, shouldClear) {
   // Bind the VAO and draw
   gl.bindVertexArray(vao);
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
+  // ───── draw debug overlays (if any) ─────
+  if ((viewBoxVerts + treeBoxVerts) > 0) {
+    gl.useProgram(bboxProg);
+    gl.uniformMatrix4fv(bboxProjLoc, false, projectionMatrix);
+    gl.disable(gl.DEPTH_TEST);   // paint on top
+
+    // (a) tree boxes  — cyan
+    if (treeBoxVerts > 0) {
+      gl.uniform4fv(bboxColorLoc, [0.0, 1.0, 1.0, 0.8]); // cyan, 80 %
+      gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
+      gl.enableVertexAttribArray(bboxPosLoc);
+      gl.vertexAttribPointer(bboxPosLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.LINES, 0, treeBoxVerts);
+    }
+
+    // (b) view window — yellow
+    if (viewBoxVerts > 0) {
+      gl.uniform4fv(bboxColorLoc, [1.0, 1.0, 0.0, 1.0]); // solid yellow
+      gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
+      gl.enableVertexAttribArray(bboxPosLoc);
+      gl.vertexAttribPointer(bboxPosLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.LINES, 0, viewBoxVerts);
+    }
+
+    gl.disableVertexAttribArray(bboxPosLoc);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    gl.enable(gl.DEPTH_TEST);    // restore
+  }
+
   gl.bindVertexArray(null);
 }
 

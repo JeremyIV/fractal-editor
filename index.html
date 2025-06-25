@@ -44,6 +44,20 @@
     <script type="module" src="./matrices.js"></script>
     <script type="module" src="./shaders.js"></script>
     <script type="module" src="./transforms.js"></script>
+    <!-- buildPrefixTree + console helpers -->
+  <script type="module" src="./buildPrefixTree.js"></script>
+
+  <!-- Optional: expose helpers for quick console experiments -->
+  <script type="module">
+    import { transforms, transition_matrix } from "./transforms.js";
+    import { buildPrefixTree } from "./buildPrefixTree.js";
+
+    // Put the things we’ll want to poke at directly on window:
+    window.transforms        = transforms;
+    window.transition_matrix = transition_matrix;
+    window.buildPrefixTree   = buildPrefixTree;   // (needed only if you skipped the line in the file)
+  </script>
+
     <script type="module" src="./gui/handles.js"></script>
     <script type="module" src="./gui/transforms_form.js"></script>
     <script type="module" src="./gui/transition_matrix.js"></script>

@@ -4,7 +4,7 @@ import { buildPrefixTree } from "./buildPrefixTree.js";
 
 let MAX_POINTS = 1_000_000;
 let QUICK_MAX_POINTS = 100_000;
-  const MAX_PFX = 32;                       // keep small for WebGL uniform limits
+const MAX_PFX = 32;                       // keep small for WebGL uniform limits
 
 let POINT_SIZE = 1.0
 let QUICK_POINT_SIZE = Math.sqrt(MAX_POINTS / QUICK_MAX_POINTS)
@@ -18,6 +18,12 @@ const QUICK_SPHERE_RADIUS = Math.sqrt(
 // World-space box that certainly encloses the entire attractor.
 // Pick tighter numbers if you know them.
 const ROOT_BOX = { xMin: -1, yMin: -1, xMax: 1, yMax: 1 };
+const ROOT_QUAD = [
+  [ROOT_BOX.xMin, ROOT_BOX.yMin],
+  [ROOT_BOX.xMax, ROOT_BOX.yMin],
+  [ROOT_BOX.xMax, ROOT_BOX.yMax],
+  [ROOT_BOX.xMin, ROOT_BOX.yMax],
+];
 
 if (!gl) {
   alert("WebGL 2.0 not supported");
@@ -112,16 +118,13 @@ function setPrefixTreeOverlay(root, options = {}) {
   const vertices      = [];
 
   (function collect(node) {
-    const b = node.box;
-
-    // bottom
-    vertices.push(b.xMin, b.yMin,  b.xMax, b.yMin);
-    // right
-    vertices.push(b.xMax, b.yMin,  b.xMax, b.yMax);
-    // top
-    vertices.push(b.xMax, b.yMax,  b.xMin, b.yMax);
-    // left
-    vertices.push(b.xMin, b.yMax,  b.xMin, b.yMin);
+    const q = node.quad;      // [[x0,y0]..]
+    verts.push(
+      q[0][0],q[0][1], q[1][0],q[1][1],
+      q[1][0],q[1][1], q[2][0],q[2][1],
+      q[2][0],q[2][1], q[3][0],q[3][1],
+      q[3][0],q[3][1], q[0][0],q[0][1]
+    );
 
     if (rec || !node.terminal) node.children.forEach(collect);
   })(root);
@@ -216,7 +219,7 @@ function rebuildOverlayBuffers() {
 
   // ── (b) rebuild prefix-tree VBO (cyan) ──
   const tree = buildPrefixTree(
-    ROOT_BOX,                // full-fractal box
+    ROOT_QUAD,                // full-fractal box
     currentViewBox,          // viewport box
     transforms,
     transition_matrix,
@@ -298,14 +301,13 @@ function rebuildOverlayBuffers() {
 
   const verts = [];
   (function collect(node) {
-    const bb = node.box;
-    // 4 edges, duplicate vertices so gl.LINES works
-    verts.push(
-      bb.xMin, bb.yMin,  bb.xMax, bb.yMin,
-      bb.xMax, bb.yMin,  bb.xMax, bb.yMax,
-      bb.xMax, bb.yMax,  bb.xMin, bb.yMax,
-      bb.xMin, bb.yMax,  bb.xMin, bb.yMin
-    );
+  const q = node.quad;      // [[x0,y0]..]
+  verts.push(
+    q[0][0],q[0][1], q[1][0],q[1][1],
+    q[1][0],q[1][1], q[2][0],q[2][1],
+    q[2][0],q[2][1], q[3][0],q[3][1],
+    q[3][0],q[3][1], q[0][0],q[0][1]
+  );
     node.children.forEach(child => { if (child) collect(child); });
   })(tree);
 

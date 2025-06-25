@@ -29,99 +29,119 @@
 import { getAffineTransform3D } from "./transforms.js";
 
 // ---------- geometry helpers ----------
-function boxesIntersect(a, b) {
-  return !(a.xMax < b.xMin || a.xMin > b.xMax ||
-           a.yMax < b.yMin || a.yMin > b.yMax);
+// ────────────────── geo helpers for convex quads ──────────────────
+function transformQuad(mat, basisQuad) {
+  // basisQuad is [[x0,y0], … , [x3,y3]] CCW
+  return basisQuad.map(([x,y]) => {
+    const v = vec4.fromValues(x, y, 0, 1);
+    vec4.transformMat4(v, v, mat);
+    return [v[0], v[1]];
+  });
 }
-function boxInside(inner, outer) {
-  return inner.xMin >= outer.xMin && inner.xMax <= outer.xMax &&
-         inner.yMin >= outer.yMin && inner.yMax <= outer.yMax;
-}
-function transformBox(matrix, baseBox) {
-  const corners = [
-    vec4.fromValues(baseBox.xMin, baseBox.yMin, 0, 1),
-    vec4.fromValues(baseBox.xMin, baseBox.yMax, 0, 1),
-    vec4.fromValues(baseBox.xMax, baseBox.yMin, 0, 1),
-    vec4.fromValues(baseBox.xMax, baseBox.yMax, 0, 1)
-  ].map(v => vec4.transformMat4(vec4.create(), v, matrix));
 
-  const xs = corners.map(p => p[0]);
-  const ys = corners.map(p => p[1]);
-  return {
-    xMin: Math.min(...xs), xMax: Math.max(...xs),
-    yMin: Math.min(...ys), yMax: Math.max(...ys)
-  };
+// axis-aligned viewport corners (CCW)
+function viewCorners(vb) {
+  return [
+    [vb.xMin, vb.yMin],
+    [vb.xMax, vb.yMin],
+    [vb.xMax, vb.yMax],
+    [vb.xMin, vb.yMax],
+  ];
+}
+
+// point inside convex quad (winding)
+function pointInQuad(p, quad) {
+  let sign = 0;
+  for (let i = 0; i < 4; ++i) {
+    const [x1,y1] = quad[i];
+    const [x2,y2] = quad[(i+1)&3];
+    const cross = (x2 - x1)*(p[1] - y1) - (y2 - y1)*(p[0] - x1);
+    if (cross === 0) continue;
+    const s = Math.sign(cross);
+    if (sign === 0) sign = s;
+    else if (sign !== s) return false;
+  }
+  return true;
+}
+
+// segment–segment intersect helper
+function segmentsIntersect(a,b,c,d){
+  function ccw(p,q,r){return (r[1]-p[1])*(q[0]-p[0])>(q[1]-p[1])*(r[0]-p[0]);}
+  return (ccw(a,c,d) !== ccw(b,c,d)) && (ccw(a,b,c) !== ccw(a,b,d));
+}
+
+// quad ↔ viewport intersection
+function quadIntersect(quad, vb){
+  const vCorners = viewCorners(vb);
+
+  // quick reject by AABB of quad
+  const xs = quad.map(p=>p[0]); const ys = quad.map(p=>p[1]);
+  if (Math.max(...xs) < vb.xMin || Math.min(...xs) > vb.xMax ||
+      Math.max(...ys) < vb.yMin || Math.min(...ys) > vb.yMax) return false;
+
+  // 1) any viewport corner inside quad
+  if (vCorners.some(c=>pointInQuad(c,quad))) return true;
+
+  // 2) any quad vertex inside viewport
+  if (quad.some(c => c[0]>=vb.xMin && c[0]<=vb.xMax &&
+                     c[1]>=vb.yMin && c[1]<=vb.yMax)) return true;
+
+  // 3) edge–edge test
+  for(let i=0;i<4;i++){
+    const a=quad[i], b=quad[(i+1)&3];
+    for(let j=0;j<4;j++){
+      const c=vCorners[j], d=vCorners[(j+1)&3];
+      if (segmentsIntersect(a,b,c,d)) return true;
+    }
+  }
+  return false;
+}
+
+// viewport fully contains quad ?
+function quadInside(quad, vb){
+  return quad.every(c => c[0]>=vb.xMin && c[0]<=vb.xMax &&
+                         c[1]>=vb.yMin && c[1]<=vb.yMax);
 }
 
 // ---------- main routine ----------
 export function buildPrefixTree(
-  rootBox,
+  basisQuad,             // [[x0,y0],...,[x3,y3]]  initial square
   viewBox,
   transforms,
   transitionMatrix,
   maxDepth = 8,
-  verbose  = false
-) {
-  const m        = transforms.length;
-  const matrices = transforms.map(getAffineTransform3D);
+  verbose   = false
+){
+  const m   = transforms.length;
+  const mats= transforms.map(getAffineTransform3D);
 
-  // --------------------------------------------------- recursive worker
-  function recurse(prefix, lastIdx, depth) {
-    // ── (1) compute this node's bounding box by applying
-    //        the matrices in *reverse* prefix order
-    let composite = mat4.create();     // identity
-    for (let k = prefix.length - 1; k >= 0; --k) {
-      mat4.multiply(composite, matrices[prefix[k]], composite);
+  function recurse(prefix,lastIdx,depth){
+    // composite matrix (reverse order)
+    let M = mat4.create();
+    for(let k=prefix.length-1;k>=0;--k){
+      mat4.multiply(M, mats[prefix[k]], M);
     }
-    const boundingBox = transformBox(composite, rootBox);
+    const quad = transformQuad(M, basisQuad);
 
-    if (verbose) {
-      console.log("Testing prefix", prefix, "\nbox:", boundingBox);
+    if (verbose) console.log("prefix",prefix,"quad",quad);
+
+    if (!quadIntersect(quad, viewBox)) return null;      // prune
+    const terminal = depth===0 || quadInside(quad,viewBox);
+
+    const node = { prefix, quad, terminal, children: new Array(m).fill(null) };
+    if (terminal) return node;
+
+    for(let i=0;i<m;++i){
+      if (lastIdx>=0 && !transitionMatrix[lastIdx][i]) continue;
+      const child = recurse([...prefix,i], i, depth-1);
+      if (child) node.children[i]=child;
     }
-
-    // ── (2) prune if completely outside viewport
-    if (!boxesIntersect(boundingBox, viewBox)) {
-      if (verbose) console.log("  » no intersection – culled");
-      return null;
+    if (node.children.every(c=>c===null)) return null;
+    if (node.children.every(c=>c && c.terminal)){
+      node.terminal=true; node.children=[];
     }
-
-    // ── (3) decide termination
-    const terminal = depth === 0 || boxInside(boundingBox, viewBox);
-
-    const node = {
-      prefix,
-      box      : boundingBox,
-      terminal,
-      children : new Array(m).fill(null)
-    };
-    if (terminal) {
-      if (verbose) console.log("  » terminal");
-      return node;
-    }
-
-    // ── (4) recurse over allowed children
-    for (let i = 0; i < m; ++i) {
-      if (lastIdx >= 0 && !transitionMatrix[lastIdx][i]) continue; // Markov rule
-      const child = recurse([...prefix, i], i, depth - 1);
-      if (child) node.children[i] = child;
-    }
-
-    // If no child survived, cull this node as well
-    if (node.children.every(c => c === null)) {
-      if (verbose) console.log(prefix, "  » all children culled");
-      return null;
-    }
-    // alternatively, if all children are terminal, we can simplify by just calling this prefix terminal
-    if (node.children.every(c => (c !== null) && c.terminal)) {
-      if (verbose) console.log(prefix, "  » all children terminal!");
-      node.terminal = true;
-      node.children = [];
-    }
-
     return node;
   }
-
-  // kick off with empty prefix
   return recurse([], -1, maxDepth);
 }
 

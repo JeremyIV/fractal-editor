@@ -182,30 +182,13 @@ function refreshTransformMatrices() {
   }
 }
 window.currentViewBox = null;
-function rebuildOverlayBuffers(projMatrix) {
-  if (!overlayEnabled) {
-    viewBoxVerts = treeBoxVerts = 0;
-    return;
-  }
-  
+// Function that always runs - handles prefix tree generation and uniform upload
+function updatePrefixTree(projMatrix) {
   // auto-calculate viewBox from projection matrix
   currentViewBox = computeViewBox(projMatrix);
-  console.log(currentViewBox);
   window.currentViewBox = currentViewBox;
 
-  // ── (a) rebuild view-window VBO (yellow) ──
-  const b = currentViewBox;
-  const viewVertices = new Float32Array([
-    b.xMin, b.yMin,  b.xMax, b.yMin,  // bottom
-    b.xMax, b.yMin,  b.xMax, b.yMax,  // right
-    b.xMax, b.yMax,  b.xMin, b.yMax,  // top
-    b.xMin, b.yMax,  b.xMin, b.yMin   // left
-  ]);
-  viewBoxVerts = 8; // 8 coords = 4 independent segments
-  gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, viewVertices, gl.STATIC_DRAW);
-
-  // ── (b) rebuild prefix-tree VBO (cyan) ──
+  // build prefix tree for frustum culling (always happens)
   const tree = buildPrefixTree(
     ROOT_QUAD,                // full-fractal box
     currentViewBox,          // viewport box
@@ -230,15 +213,10 @@ function rebuildOverlayBuffers(projMatrix) {
       false,
       arr
     );
-
-    treeBoxVerts = 0;   // clear overlay VBO so it draws nothing
-    gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(), gl.STATIC_DRAW);
-    return;             // done with overlay code
+    return tree;
   }
 
-  // ---------------------------------------------------------------
-  // 1. gather terminal prefixes
+  // gather terminal prefixes
   const terminals = [];
   (function collect(node) {
     if (node.terminal) { terminals.push(node); return; }
@@ -248,21 +226,18 @@ function rebuildOverlayBuffers(projMatrix) {
   // safety guard
   const use = terminals.slice(0, MAX_PFX);
 
-  // ---------------------------------------------------------------
-  // 2. build composite matrices (reverse-order product)
+  // build composite matrices (reverse-order product)
   refreshTransformMatrices();
   function compositeMatrix(prefix) {
     let M = mat4.create();                  // identity
     for (let k = prefix.length - 1; k >= 0; --k) {
       mat4.multiply(M, transforms[prefix[k]]._matrix, M);
-      // pre-compute _matrix = getAffineTransform3D(t) once at app start
     }
     return M;
   }
   const mats = use.map(n => compositeMatrix(n.prefix));
 
-  // ---------------------------------------------------------------
-  // 3. optional importance weights (prod |det| is common)
+  // optional importance weights (prod |det| is common)
   const weights = use.map(n => {
     let w = 1.0;
     n.prefix.forEach(i => {
@@ -274,8 +249,7 @@ function rebuildOverlayBuffers(projMatrix) {
   const totalW = weights.reduce((a,b)=>a+b,0);
   const cdf    = weights.map((w,i)=>weights.slice(0,i+1).reduce((a,b)=>a+b,0)/totalW);
 
-  // ---------------------------------------------------------------
-  // 4. upload uniforms
+  // upload uniforms
   gl.useProgram(program);
   gl.uniform1i(gl.getUniformLocation(program,"uNumPrefixes"), use.length);
   gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"), cdf);
@@ -286,6 +260,36 @@ function rebuildOverlayBuffers(projMatrix) {
     flat.set(mats[i], i * 16);      // copy each mat4
   }
   gl.uniformMatrix4fv(pfxMatLoc, false, flat);
+  
+  return tree;
+}
+
+// Function that only runs when overlay is enabled - handles visual overlay buffers
+function rebuildOverlayBuffers(tree) {
+  if (!overlayEnabled || !currentViewBox) {
+    viewBoxVerts = treeBoxVerts = 0;
+    return;
+  }
+
+  // ── (a) rebuild view-window VBO (yellow) ──
+  const b = currentViewBox;
+  const viewVertices = new Float32Array([
+    b.xMin, b.yMin,  b.xMax, b.yMin,  // bottom
+    b.xMax, b.yMin,  b.xMax, b.yMax,  // right
+    b.xMax, b.yMax,  b.xMin, b.yMax,  // top
+    b.xMin, b.yMax,  b.xMin, b.yMin   // left
+  ]);
+  viewBoxVerts = 8; // 8 coords = 4 independent segments
+  gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
+  gl.bufferData(gl.ARRAY_BUFFER, viewVertices, gl.STATIC_DRAW);
+
+  // ── (b) rebuild prefix-tree VBO (cyan) ──
+  if (!tree) {
+    treeBoxVerts = 0;   // clear overlay VBO so it draws nothing
+    gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(), gl.STATIC_DRAW);
+    return;
+  }
 
   const verts = [];
   (function collect(node) {
@@ -337,8 +341,11 @@ function renderSinglePass(quick, shouldClear) {
   }
   mat4.multiply(projectionMatrix, projectionMatrix, perspective);
 
-  // update overlays based on current projection
-  rebuildOverlayBuffers(projectionMatrix);
+  // always update prefix tree for frustum culling
+  const tree = updatePrefixTree(projectionMatrix);
+  
+  // only rebuild overlay buffers if overlay is enabled
+  rebuildOverlayBuffers(tree);
 
   // Set the projection matrix uniform
   const uProjectionMatrixLoc = gl.getUniformLocation(

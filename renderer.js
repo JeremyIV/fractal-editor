@@ -1,6 +1,6 @@
 import { transforms, perspective, getAffineTransform3D } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
-import { buildPrefixTree } from "./buildPrefixTree.js";
+import { buildPrefixTree, truncatePrefixTree } from "./buildPrefixTree.js";
 
 let MAX_POINTS = 1_000_000;
 let QUICK_MAX_POINTS = 100_000;
@@ -71,15 +71,35 @@ let   viewBoxVerts = 0;
 
 const treeBoxVBO   = gl.createBuffer();
 let   treeBoxVerts = 0;
-// ───── debug overlay state ─────
-let currentViewBox = null;   // {xMin,yMin,xMax,yMax}
+// ───── overlay toggle state ─────
+let overlayEnabled = false;  // off by default
+let currentViewBox = null;   // {xMin,yMin,xMax,yMax} - auto-calculated
 
-// console helper: set or update the view box
-function setViewBox(box) {
-  currentViewBox = { ...box };
-  rebuildOverlayBuffers();   // refresh immediately
+// console helpers for overlay toggle
+function toggleOverlay() { overlayEnabled = !overlayEnabled; }
+function enableOverlay() { overlayEnabled = true; }
+function disableOverlay() { overlayEnabled = false; }
+window.toggleOverlay = toggleOverlay;
+window.enableOverlay = enableOverlay;
+window.disableOverlay = disableOverlay;
+
+// helper to compute current viewBox from projection matrix
+function computeViewBox(projMatrix) {
+  const inv = mat4.invert(mat4.create(), projMatrix);
+  const ndcCorners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+  const worldCorners = ndcCorners.map(([x, y]) => {
+    const v = vec4.transformMat4(vec4.create(), vec4.fromValues(x, y, 0, 1), inv);
+    return [v[0] / v[3], v[1] / v[3]];
+  });
+  const xs = worldCorners.map(p => p[0]);
+  const ys = worldCorners.map(p => p[1]);
+  return {
+    xMin: Math.min(...xs),
+    yMin: Math.min(...ys),
+    xMax: Math.max(...xs),
+    yMax: Math.max(...ys)
+  };
 }
-window.setViewBox = setViewBox;   // expose to dev-tools
 
 
 const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
@@ -105,43 +125,6 @@ let isProgressiveMode = false;
 let currentPassCount = 0;
 let progressiveAnimationId = null;
 
-// ──────────────────────────────────
-//  Public helpers for the console
-// ──────────────────────────────────
-/**
- * Accepts the prefix-tree root produced by buildPrefixTree(...)
- * and rebuilds the line-buffer so it can be over-painted.
- */
-function setPrefixTreeOverlay(root, options = {}) {
-  const rec           = options.recursive ?? true;   // draw non-terminal too?
-  const colorRGBA     = options.color ?? [1,1,0,0.9]; // default yellow, 90 % α
-  const vertices      = [];
-
-  (function collect(node) {
-    const q = node.quad;      // [[x0,y0]..]
-    verts.push(
-      q[0][0],q[0][1], q[1][0],q[1][1],
-      q[1][0],q[1][1], q[2][0],q[2][1],
-      q[2][0],q[2][1], q[3][0],q[3][1],
-      q[3][0],q[3][1], q[0][0],q[0][1]
-    );
-
-    if (rec || !node.terminal) node.children.forEach(collect);
-  })(root);
-
-  bboxVertexCount = vertices.length / 2;
-  gl.bindBuffer(gl.ARRAY_BUFFER, bboxVBO);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-  // simple state we need while drawing
-  setPrefixTreeOverlay.color = colorRGBA;
-  setPrefixTreeOverlay.enabled = true;
-}
-window.setPrefixTreeOverlay = setPrefixTreeOverlay; // handy for dev-tools
-
-function hidePrefixTreeOverlay() { setPrefixTreeOverlay.enabled = false; }
-window.hidePrefixTreeOverlay = hidePrefixTreeOverlay;
 
 
 // Helper to safely set uniforms
@@ -198,12 +181,17 @@ function refreshTransformMatrices() {
     transforms[i]._matrix = getAffineTransform3D(transforms[i]);
   }
 }
-
-function rebuildOverlayBuffers() {
-  if (!currentViewBox) {
+window.currentViewBox = null;
+function rebuildOverlayBuffers(projMatrix) {
+  if (!overlayEnabled) {
     viewBoxVerts = treeBoxVerts = 0;
     return;
   }
+  
+  // auto-calculate viewBox from projection matrix
+  currentViewBox = computeViewBox(projMatrix);
+  console.log(currentViewBox);
+  window.currentViewBox = currentViewBox;
 
   // ── (a) rebuild view-window VBO (yellow) ──
   const b = currentViewBox;
@@ -320,9 +308,6 @@ function rebuildOverlayBuffers() {
 
 function renderSinglePass(quick, shouldClear) {
 
-  // keep overlays in sync every frame
-  if (currentViewBox) rebuildOverlayBuffers();
-
   if (shouldClear) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
@@ -351,6 +336,9 @@ function renderSinglePass(quick, shouldClear) {
     );
   }
   mat4.multiply(projectionMatrix, projectionMatrix, perspective);
+
+  // update overlays based on current projection
+  rebuildOverlayBuffers(projectionMatrix);
 
   // Set the projection matrix uniform
   const uProjectionMatrixLoc = gl.getUniformLocation(
@@ -471,8 +459,8 @@ function renderSinglePass(quick, shouldClear) {
   // Bind the VAO and draw
   gl.bindVertexArray(vao);
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
-  // ───── draw debug overlays (if any) ─────
-  if ((viewBoxVerts + treeBoxVerts) > 0) {
+  // ───── draw debug overlays (if enabled and any) ─────
+  if (overlayEnabled && (viewBoxVerts + treeBoxVerts) > 0) {
     gl.useProgram(bboxProg);
     gl.uniformMatrix4fv(bboxProjLoc, false, projectionMatrix);
     gl.disable(gl.DEPTH_TEST);   // paint on top

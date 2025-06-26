@@ -18,6 +18,7 @@ uniform vec4  uColors[10];
 uniform int   uNumPrefixes;
 uniform float uPrefixCDF[MAX_PFX];
 uniform mat4  uPrefixMatrices[MAX_PFX];
+uniform vec4  uPrefixColors[MAX_PFX];
 
 uniform mat4  uProjectionMatrix;
 
@@ -77,6 +78,13 @@ void main() {
         transformedColor.a = 1.0;
     }
     offset      = uPrefixMatrices[chosen] * offset;
+    
+    /* prefix colour blending */
+    vec4 prefixC = uPrefixColors[chosen];
+    float alpha = (transformedColor.a==0.0)?1.0:prefixC.a;
+    transformedColor.a = 1.0;
+    transformedColor   = mix(transformedColor, prefixC, alpha);
+    transformedColor.a = 1.0;
 
     vColor       = transformedColor;
     gl_Position  = uProjectionMatrix * offset;

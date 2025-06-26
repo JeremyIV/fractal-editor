@@ -141,6 +141,12 @@ function drawScene(quick, first_pass) {
     cancelAnimationFrame(progressiveAnimationId);
     progressiveAnimationId = null;
   }
+  // always update prefix tree for frustum culling
+  const tree = updatePrefixTree(projectionMatrix);
+  
+  // only rebuild overlay buffers if overlay is enabled
+  rebuildOverlayBuffers(tree);
+
 
   // Determine rendering mode
   if (quick === true) {
@@ -181,6 +187,30 @@ function refreshTransformMatrices() {
     transforms[i]._matrix = getAffineTransform3D(transforms[i]);
   }
 }
+
+/**
+ * Composite c2 over c1 (arrays [r, g, b, a], each 0-1).
+ * Returns a new [r, g, b, a] array.
+ */
+function stackColors(c1, c2) {
+  const [r1, g1, b1, a1] = c1;
+  const [r2, g2, b2, a2] = c2;
+
+  // Resulting alpha
+  const a3 = a2 + a1 * (1 - a2);
+
+  // Avoid division when completely transparent
+  if (a3 === 0) return [0, 0, 0, 0];
+
+  // Premultiplied approach
+  const r3 = (r2 * a2 + r1 * a1 * (1 - a2)) / a3;
+  const g3 = (g2 * a2 + g1 * a1 * (1 - a2)) / a3;
+  const b3 = (b2 * a2 + b1 * a1 * (1 - a2)) / a3;
+
+  return [r3, g3, b3, a3];
+}
+
+
 window.currentViewBox = null;
 // Function that always runs - handles prefix tree generation and uniform upload
 function updatePrefixTree(projMatrix) {
@@ -194,7 +224,7 @@ function updatePrefixTree(projMatrix) {
     currentViewBox,          // viewport box
     transforms,
     transition_matrix,
-    5                       // maxDepth
+    10                       // maxDepth
   );
   truncatePrefixTree(tree, MAX_PFX)
   window.tree = tree;
@@ -230,12 +260,23 @@ function updatePrefixTree(projMatrix) {
   refreshTransformMatrices();
   function compositeMatrix(prefix) {
     let M = mat4.create();                  // identity
+    let C = [0,0,0,0];
     for (let k = prefix.length - 1; k >= 0; --k) {
       mat4.multiply(M, transforms[prefix[k]]._matrix, M);
+      C = stackColors(C, transforms[prefix[k]].color);
     }
     return M;
-  }
+  }  
   const mats = use.map(n => compositeMatrix(n.prefix));
+
+  function compositeColor(prefix) {
+    let C = [0,0,0,0];
+    for (let k = prefix.length - 1; k >= 0; --k) {
+      C = stackColors(C, transforms[prefix[k]].color);
+    }
+    return C;
+  }  
+  const colors = use.map(n => compositeColor(n.prefix));
 
   // optional importance weights (prod |det| is common)
   const weights = use.map(n => {
@@ -260,6 +301,14 @@ function updatePrefixTree(projMatrix) {
     flat.set(mats[i], i * 16);      // copy each mat4
   }
   gl.uniformMatrix4fv(pfxMatLoc, false, flat);
+  
+  // load the colors into uniform vec4 uPrefixColors[MAX_PFX]
+  const flatColors = new Float32Array(colors.length * 4);
+  for (let i = 0; i < colors.length; ++i) {
+    flatColors.set(colors[i], i * 4);
+  }
+  const pfxColLoc = gl.getUniformLocation(program, "uPrefixColors[0]");
+  gl.uniform4fv(pfxColLoc, flatColors);
   
   return tree;
 }
@@ -340,12 +389,6 @@ function renderSinglePass(quick, shouldClear) {
     );
   }
   mat4.multiply(projectionMatrix, projectionMatrix, perspective);
-
-  // always update prefix tree for frustum culling
-  const tree = updatePrefixTree(projectionMatrix);
-  
-  // only rebuild overlay buffers if overlay is enabled
-  rebuildOverlayBuffers(tree);
 
   // Set the projection matrix uniform
   const uProjectionMatrixLoc = gl.getUniformLocation(
@@ -514,7 +557,7 @@ function resizeCanvas() {
   
   // Single render after resize
   currentPassCount = 0;
-  renderSinglePass(false, true);
+  drawScene(false);
 }
 
 window.addEventListener("resize", resizeCanvas);

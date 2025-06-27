@@ -148,59 +148,93 @@ export function buildPrefixTree(
 /**
  * truncatePrefixTree
  * ------------------
- * Mutates `root` so that the total number of terminal prefixes
- * is ≤ maxPrefixes.  Strategy:
+ * Mutates `root` so that the *total* number of terminal nodes
+ * does not exceed `maxPrefixes`.  Works by repeatedly finding the
+ * internal node whose collapse removes the most leaves.
  *
- *   • Walk the tree level-by-level (breadth-first).
- *   • Stop at the first depth whose node count would exceed the limit.
- *   • Mark every node on the previous level as terminal and
- *     null-out their children, thereby discarding deeper nodes.
- *
- * This guarantees we always keep the deepest complete level that
- * still fits in the budget.
- *
- * @param {Node|null} root          prefix-tree root (may be null)
- * @param {number}    maxPrefixes   hard upper limit (e.g. 32)
- * @return {Node|null}              same root pointer, possibly trimmed
+ * @param {Node|null} root
+ * @param {number}    maxPrefixes   (must be ≥ 0)
+ * @return {Node|null}              the same root (possibly trimmed)
  */
 export function truncatePrefixTree(root, maxPrefixes) {
-  if (!root) return null;                     // empty tree stays empty
-  if (maxPrefixes < 1)  {                    // degenerate request
+  if (!root) return null;
+
+  // Degenerate limits
+  if (maxPrefixes <= 0) {
     root.terminal = true;
     root.children = Array(root.children.length).fill(null);
     return root;
   }
 
-  let currentLevel = [root];                 // depth 0
-  let depth        = 0;
-
-  while (true) {
-    // Gather next level ---------------------------------------------------
-    const nextLevel = [];
-    currentLevel.forEach(node => {
-      node.children.forEach(child => { if (child) nextLevel.push(child); });
-    });
-
-    if (nextLevel.length === 0) break;       // reached leaves naturally
-
-    // Would the next level exceed the cap?
-    if (nextLevel.length > maxPrefixes) {
-      // Turn every node of *current* level into a terminal ----------------
-      currentLevel.forEach(node => {
-        node.terminal = true;
-        node.children = Array(node.children.length).fill(null);
-      });
-      break;                                 // done: now ≤ maxPrefixes
+  /* -----------------------------------------------------------
+     Helper 1: analyse(node)
+       * returns the number of terminal leaves in `node`’s subtree
+       * also returns the internal node which – if collapsed –
+         would remove the **largest** number of leaves
+  ----------------------------------------------------------- */
+  function analyse(node) {
+    // leaf → one terminal, nothing collapsible
+    if (!node || node.terminal) {
+      return { leaves: 1, bestNode: null, bestGain: 0 };
     }
 
-    // Otherwise descend one level and continue ---------------------------
-    currentLevel = nextLevel;
-    depth++;
+    let leaves   = 0;
+    let bestNode = null;
+    let bestGain = 0;
+
+    for (const child of node.children) {
+      if (!child) continue;
+
+      const r = analyse(child);
+      leaves += r.leaves;
+
+      // bubble up the best candidate found in this branch
+      if (r.bestGain > bestGain) {
+        bestGain = r.bestGain;
+        bestNode = r.bestNode;
+      }
+    }
+
+    // Collapsing *this* node would remove (leaves-1) terminals
+    const myGain = leaves - 1;
+    if (myGain > bestGain) {
+      bestGain = myGain;
+      bestNode = node;
+    }
+
+    return { leaves, bestNode, bestGain };
+  }
+
+  /* -----------------------------------------------------------
+     Helper 2: collapse(node)
+       Converts an internal node into a terminal leaf and returns
+       how many terminals were removed in the process.
+  ----------------------------------------------------------- */
+  function collapse(node) {
+    if (!node || node.terminal) return 0;
+
+    // How many leaves are in this subtree?
+    const { leaves } = analyse(node);
+    const removed    = leaves - 1;       // new leaf replaces old leaves
+
+    node.terminal  = true;
+    node.children  = Array(node.children.length).fill(null);
+
+    return removed;
+  }
+
+  /* -----------------------------------------------------------
+     Main loop: keep collapsing until we are within the budget
+  ----------------------------------------------------------- */
+  while (true) {
+    const { leaves, bestNode } = analyse(root);
+    if (leaves <= maxPrefixes || !bestNode) break; // finished
+
+    collapse(bestNode); // removes the largest block of leaves
   }
 
   return root;
 }
-
 
 
 // make life easy in the console

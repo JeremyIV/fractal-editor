@@ -121,6 +121,25 @@ async function list_fractals(sort = "popular") {
 }
 
 /**
+ * Delete a fractal (only works for fractals created from this browser)
+ * @param {string} id - Fractal ID
+ */
+async function delete_fractal(id) {
+  const response = await fetch(`${API_BASE_URL}/api/fractals/${id}`, {
+    method: "DELETE",
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Failed to delete fractal: ${errorData.error || response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
  * Favorite or unfavorite a fractal
  * @param {string} id - Fractal ID
  * @param {boolean} favorited - true to favorite, false to unfavorite
@@ -146,5 +165,6 @@ window.save_fractal = save_fractal;
 window.load_fractal = load_fractal;
 window.list_fractals = list_fractals;
 window.set_favorite = set_favorite;
+window.delete_fractal = delete_fractal;
 
-export { save_fractal, load_fractal, list_fractals, set_favorite };
+export { save_fractal, load_fractal, list_fractals, set_favorite, delete_fractal };

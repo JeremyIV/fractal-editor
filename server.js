@@ -32,6 +32,7 @@ async function getDb() {
   );
   await favorites.createIndex({ client_id: 1 });
   await fractals.createIndex({ favorite_count: -1, created_at: -1 });
+  await fractals.createIndex({ creator_id: 1, name: 1 });
   // backfill the denormalized count on docs that predate favorites
   await fractals.updateMany(
     { favorite_count: { $exists: false } },
@@ -96,14 +97,19 @@ app.get("/api/list", async (req, res) => {
       fractals
         .find({})
         .sort(sortOrder)
-        .project({ name: 1, created_at: 1, favorite_count: 1 })
+        .project({ name: 1, created_at: 1, favorite_count: 1, creator_id: 1 })
         .toArray(),
       favorites.find({ client_id: req.clientId }).toArray(),
     ]);
 
     const myFavorites = new Set(mine.map((f) => String(f.fractal_id)));
+    // creator_id is the ownership capability -- never expose it, only `mine`
     res.json(
-      list.map((f) => ({ ...f, favorited: myFavorites.has(String(f._id)) }))
+      list.map(({ creator_id, ...f }) => ({
+        ...f,
+        favorited: myFavorites.has(String(f._id)),
+        mine: creator_id === req.clientId,
+      }))
     );
   } catch (error) {
     console.error("Error listing fractals:", error);
@@ -119,7 +125,10 @@ app.get("/api/get/:id", async (req, res) => {
   }
   try {
     const { fractals } = await getDb();
-    const fractal = await fractals.findOne({ _id: new ObjectId(id) });
+    const fractal = await fractals.findOne(
+      { _id: new ObjectId(id) },
+      { projection: { creator_id: 0 } }
+    );
     if (!fractal) {
       return res.status(404).json({ error: "Fractal not found" });
     }
@@ -130,7 +139,9 @@ app.get("/api/get/:id", async (req, res) => {
   }
 });
 
-// Save a new fractal. The uploader automatically favorites their own creation.
+// Save a fractal. Names are unique per creator: saving with a name you've
+// already used overwrites that fractal (keeping its id and favorites).
+// New fractals are automatically favorited by their uploader.
 app.post("/api/upload", async (req, res) => {
   const { name, data } = req.body || {};
   if (typeof name !== "string" || !name.trim()) {
@@ -145,8 +156,26 @@ app.post("/api/upload", async (req, res) => {
   }
   try {
     const { fractals, favorites } = await getDb();
+    const trimmed = name.trim();
+
+    const existing = await fractals.findOne(
+      { creator_id: req.clientId, name: trimmed },
+      { projection: { _id: 1 } }
+    );
+    if (existing) {
+      await fractals.updateOne(
+        { _id: existing._id },
+        { $set: { data, updated_at: new Date() } }
+      );
+      return res.json({
+        message: "Fractal updated",
+        id: existing._id,
+        updated: true,
+      });
+    }
+
     const result = await fractals.insertOne({
-      name: name.trim(),
+      name: trimmed,
       data,
       created_at: new Date(),
       creator_id: req.clientId,
@@ -160,9 +189,38 @@ app.post("/api/upload", async (req, res) => {
     res.status(201).json({
       message: "Fractal stored successfully",
       id: result.insertedId,
+      updated: false,
     });
   } catch (error) {
     console.error("Error saving fractal:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Delete a fractal -- only its creator can, favorites are cleaned up too
+app.delete("/api/fractals/:id", async (req, res) => {
+  const { id } = req.params;
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid fractal ID" });
+  }
+  const fractalId = new ObjectId(id);
+  try {
+    const { fractals, favorites } = await getDb();
+    const fractal = await fractals.findOne(
+      { _id: fractalId },
+      { projection: { creator_id: 1 } }
+    );
+    if (!fractal) {
+      return res.status(404).json({ error: "Fractal not found" });
+    }
+    if (fractal.creator_id !== req.clientId) {
+      return res.status(403).json({ error: "Only the creator can delete this fractal" });
+    }
+    await fractals.deleteOne({ _id: fractalId });
+    await favorites.deleteMany({ fractal_id: fractalId });
+    res.json({ message: "Fractal deleted" });
+  } catch (error) {
+    console.error("Error deleting fractal:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

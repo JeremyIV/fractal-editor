@@ -3,6 +3,7 @@ import {
   load_fractal,
   list_fractals,
   set_favorite,
+  delete_fractal,
 } from "../database.js";
 import { toast } from "./toast.js";
 import { tutorialEvent } from "./tutorial.js";
@@ -69,12 +70,49 @@ function createFractalItem(fractal) {
   });
   fractalItem.appendChild(favButton);
 
+  if (fractal.mine) {
+    // two-step inline confirm: click turns the button into "Delete?" for 3s
+    const delButton = document.createElement("button");
+    delButton.className = "del-btn";
+    delButton.title = "Delete (you created this)";
+    delButton.textContent = "🗑";
+    let confirmTimer = null;
+    delButton.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      if (!delButton.classList.contains("confirm")) {
+        delButton.classList.add("confirm");
+        delButton.textContent = "Delete?";
+        confirmTimer = setTimeout(() => {
+          delButton.classList.remove("confirm");
+          delButton.textContent = "🗑";
+        }, 3000);
+        return;
+      }
+      clearTimeout(confirmTimer);
+      delButton.disabled = true;
+      try {
+        await delete_fractal(fractal._id);
+        cachedFractals = cachedFractals.filter((f) => f._id !== fractal._id);
+        renderFractalList();
+        toast(`Deleted "${fractal.name}"`);
+      } catch (error) {
+        delButton.disabled = false;
+        toast(`Failed to delete: ${error.message}`, "error");
+      }
+    });
+    fractalItem.appendChild(delButton);
+  }
+
   fractalItem.addEventListener("click", async () => {
     try {
       fractalItem.style.opacity = "0.5";
       await load_fractal(fractal._id);
       fractalItem.style.opacity = "1";
       toast(`Loaded "${fractal.name}"`, "success");
+      if (fractal.mine) {
+        // prefill so tweak-and-save updates this fractal by default
+        document.getElementById("fractal-name").value = fractal.name;
+      }
     } catch (error) {
       fractalItem.style.opacity = "1";
       toast(`Failed to load fractal: ${error.message}`, "error");
@@ -144,11 +182,10 @@ async function saveFractal() {
     saveButton.disabled = true;
     saveButton.textContent = "Saving...";
 
-    await save_fractal(name);
+    const result = await save_fractal(name);
 
-    nameInput.value = "";
     loadFractalList();
-    toast(`Saved "${name}"`, "success");
+    toast(result.updated ? `Updated "${name}"` : `Saved "${name}"`, "success");
   } catch (error) {
     toast(`Failed to save fractal: ${error.message}`, "error");
   } finally {

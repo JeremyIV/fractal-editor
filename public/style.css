@@ -381,7 +381,60 @@ input[type="number"] {
   flex: 1;
 }
 
+.load-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.load-header h3 {
+  margin: 0 2px;
+}
+
+.sort-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.sort-toggle button {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sort-toggle button.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.list-subheader {
+  margin: 14px 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.list-subheader:first-child {
+  margin-top: 2px;
+}
+
 .fractal-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 10px 12px;
   margin-bottom: 6px;
   background: var(--bg-card);
@@ -389,6 +442,39 @@ input[type="number"] {
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
+}
+
+.fractal-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.fav-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  font-size: 13px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.fav-btn span {
+  font-size: 11px;
+}
+
+.fav-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+}
+
+.fav-btn.favorited {
+  color: var(--danger);
 }
 
 .fractal-item:hover {
@@ -399,6 +485,9 @@ input[type="number"] {
 .fractal-name {
   font-weight: 500;
   margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fractal-date {

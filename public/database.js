@@ -100,10 +100,12 @@ async function load_fractal(id) {
 
 /**
  * List all fractals in the database
- * @returns {Promise<Array>} Array of fractal metadata (name, id, created_at)
+ * @param {"popular"|"recent"} sort - Sort order
+ * @returns {Promise<Array>} Array of fractal metadata
+ *   (name, id, created_at, favorite_count, favorited)
  */
-async function list_fractals() {
-  const response = await fetch(`${API_BASE_URL}/api/list`);
+async function list_fractals(sort = "popular") {
+  const response = await fetch(`${API_BASE_URL}/api/list?sort=${sort}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -115,9 +117,31 @@ async function list_fractals() {
   return response.json();
 }
 
+/**
+ * Favorite or unfavorite a fractal
+ * @param {string} id - Fractal ID
+ * @param {boolean} favorited - true to favorite, false to unfavorite
+ * @returns {Promise<Object>} { favorited, favorite_count }
+ */
+async function set_favorite(id, favorited) {
+  const response = await fetch(`${API_BASE_URL}/api/fractals/${id}/favorite`, {
+    method: favorited ? "PUT" : "DELETE",
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Failed to update favorite: ${errorData.error || response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
 // Console convenience
 window.save_fractal = save_fractal;
 window.load_fractal = load_fractal;
 window.list_fractals = list_fractals;
+window.set_favorite = set_favorite;
 
-export { save_fractal, load_fractal, list_fractals };
+export { save_fractal, load_fractal, list_fractals, set_favorite };

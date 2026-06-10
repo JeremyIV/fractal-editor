@@ -1,9 +1,10 @@
 // Database functions for loading and saving fractals
 import { transforms, transition_matrix } from "./transforms.js";
-import { drawScene } from "./renderer.js";
+import { drawScene, getRenderMode } from "./renderer.js";
 import { recreateHandles } from "./gui/handles.js";
 import { reRenderTransformForms } from "./gui/transforms_form.js";
 import { refreshTransitionMatrixUI } from "./gui/transition_matrix.js";
+import { setModeUI } from "./gui/render_mode.js";
 
 // API is served by the same Express server that serves this page
 const API_BASE_URL = "";
@@ -23,6 +24,7 @@ async function save_fractal(name) {
     data: {
       transforms: transforms,
       transition_matrix: transition_matrix,
+      render_mode: getRenderMode(),
     },
   };
 
@@ -91,6 +93,7 @@ async function load_fractal(id) {
   });
 
   // Update all UI components for the new transforms
+  setModeUI(fractal.data.render_mode === "luminous" ? "luminous" : "opaque");
   recreateHandles();
   reRenderTransformForms();
   refreshTransitionMatrixUI();

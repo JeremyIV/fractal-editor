@@ -17,6 +17,13 @@
         <a href="javascript:void(0)" id="closeToolbar" class="closeToolbar">×</a>
       </div>
       <div class="panel-body">
+        <div class="render-mode-row">
+          <span class="tf-row-label">Render</span>
+          <div class="sort-toggle" id="render-mode-toggle">
+            <button data-mode="opaque" class="active">Opaque</button>
+            <button data-mode="luminous">Luminous</button>
+          </div>
+        </div>
         <div id="transform-forms">
           <!-- Transform forms will be dynamically inserted here -->
         </div>
@@ -61,6 +68,7 @@
     <script type="module" src="./gui/handles.js"></script>
     <script type="module" src="./gui/transforms_form.js"></script>
     <script type="module" src="./gui/transition_matrix.js"></script>
+    <script type="module" src="./gui/render_mode.js"></script>
     <script type="module" src="./renderer.js"></script>
   </body>
 </html>

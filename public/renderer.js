@@ -126,6 +126,133 @@ let isProgressiveMode = false;
 let currentPassCount = 0;
 let progressiveAnimationId = null;
 
+// ──────────────────────────────────
+//  Luminous (additive) rendering
+// ──────────────────────────────────
+// Points are accumulated additively into a float framebuffer; the screen
+// shows the *running mean* (sum / passes), tone-mapped as 1-exp(-k*mu).
+// Normalizing by pass count makes the image converge instead of brighten
+// forever; auto-exposure (percentile of a 64x64 density sample) handles
+// how density varies with the fractal and the zoom level.
+const luminousSupported = !!gl.getExtension("EXT_color_buffer_float");
+let renderMode = "opaque";
+let accumTex = null;
+let accumFBO = null;
+let accumW = 0;
+let accumH = 0;
+let accumNeedsClear = true;
+let exposure = 50.0;
+let lastExposurePass = 0;
+const SAMPLE_SIZE = 64;
+let sampleTex = null;
+let sampleFBO = null;
+
+const fullscreenVertexSource = `#version 300 es
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+const displayFragmentSource = `#version 300 es
+precision highp float;
+uniform sampler2D uAccum;
+uniform float uInvPasses;
+uniform float uExposure;
+out vec4 fragColor;
+void main() {
+  vec3 mu = texelFetch(uAccum, ivec2(gl_FragCoord.xy), 0).rgb * uInvPasses;
+  fragColor = vec4(1.0 - exp(-uExposure * mu), 1.0);
+}`;
+const sampleFragmentSource = `#version 300 es
+precision highp float;
+uniform sampler2D uAccum;
+uniform vec2 uAccumSize;
+out vec4 fragColor;
+void main() {
+  vec2 uv = gl_FragCoord.xy / ${SAMPLE_SIZE}.0;
+  fragColor = texelFetch(uAccum, ivec2(uv * uAccumSize), 0);
+}`;
+
+let displayProg = null;
+let sampleProg = null;
+if (luminousSupported) {
+  displayProg = createProgram(
+    gl,
+    createShader(gl, gl.VERTEX_SHADER, fullscreenVertexSource),
+    createShader(gl, gl.FRAGMENT_SHADER, displayFragmentSource)
+  );
+  sampleProg = createProgram(
+    gl,
+    createShader(gl, gl.VERTEX_SHADER, fullscreenVertexSource),
+    createShader(gl, gl.FRAGMENT_SHADER, sampleFragmentSource)
+  );
+}
+
+function createFloatTarget(w, h) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { tex, fbo };
+}
+
+function ensureAccumBuffers() {
+  if (accumTex && accumW === canvas.width && accumH === canvas.height) return;
+  if (accumTex) {
+    gl.deleteTexture(accumTex);
+    gl.deleteFramebuffer(accumFBO);
+  }
+  ({ tex: accumTex, fbo: accumFBO } = createFloatTarget(canvas.width, canvas.height));
+  accumW = canvas.width;
+  accumH = canvas.height;
+  accumNeedsClear = true;
+  if (!sampleTex) {
+    ({ tex: sampleTex, fbo: sampleFBO } = createFloatTarget(SAMPLE_SIZE, SAMPLE_SIZE));
+  }
+}
+
+function updateExposure(passes) {
+  lastExposurePass = passes;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, sampleFBO);
+  gl.viewport(0, 0, SAMPLE_SIZE, SAMPLE_SIZE);
+  gl.useProgram(sampleProg);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, accumTex);
+  gl.uniform1i(gl.getUniformLocation(sampleProg, "uAccum"), 0);
+  gl.uniform2f(gl.getUniformLocation(sampleProg, "uAccumSize"), accumW, accumH);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const buf = new Float32Array(SAMPLE_SIZE * SAMPLE_SIZE * 4);
+  gl.readPixels(0, 0, SAMPLE_SIZE, SAMPLE_SIZE, gl.RGBA, gl.FLOAT, buf);
+  const lum = [];
+  for (let i = 0; i < buf.length; i += 4) {
+    const l = (buf[i] + buf[i + 1] + buf[i + 2]) / (3 * passes);
+    if (l > 0) lum.push(l);
+  }
+  if (lum.length === 0) return;
+  lum.sort((a, b) => a - b);
+  // expose so the brightest structures land around 0.86 after tone-mapping
+  const ref = lum[Math.min(lum.length - 1, Math.floor(lum.length * 0.92))];
+  const target = 2.0 / Math.max(ref, 1e-9);
+  exposure = Math.min(Math.max(exposure * 0.6 + target * 0.4, 0.05), 1e6);
+}
+
+function setRenderMode(mode) {
+  if (mode === renderMode) return;
+  if (mode === "luminous" && !luminousSupported) return;
+  renderMode = mode;
+  drawScene();
+}
+
+function getRenderMode() {
+  return renderMode;
+}
+
 
 
 // Helper to safely set uniforms
@@ -164,6 +291,7 @@ function drawScene(quick, first_pass) {
     isProgressiveMode = true;
     currentPassCount = 0;
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    accumNeedsClear = true;
     startProgressiveRendering();
   }
 }
@@ -365,8 +493,9 @@ function rebuildOverlayBuffers(tree) {
 }
 
 function renderSinglePass(quick, shouldClear) {
+  const luminous = renderMode === "luminous" && luminousSupported;
 
-  if (shouldClear) {
+  if (!luminous && shouldClear) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
@@ -509,11 +638,47 @@ function renderSinglePass(quick, shouldClear) {
   setUniform1f("uPointSize", point_size);
 
 
+  if (luminous) {
+    // accumulate points additively into the float buffer
+    ensureAccumBuffers();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, accumFBO);
+    if (shouldClear || accumNeedsClear) {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.clearColor(0, 0, 0, 1);
+      accumNeedsClear = false;
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+  }
+
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
   // Bind the VAO and draw
   gl.bindVertexArray(vao);
   gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
+
+  if (luminous) {
+    gl.disable(gl.BLEND);
+    const passes = currentPassCount + 1;
+    if (passes <= 2 || passes - lastExposurePass >= 10) {
+      updateExposure(passes);
+    }
+    // tone-mapped display pass: screen = 1 - exp(-exposure * sum/passes)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(displayProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, accumTex);
+    gl.uniform1i(gl.getUniformLocation(displayProg, "uAccum"), 0);
+    gl.uniform1f(gl.getUniformLocation(displayProg, "uInvPasses"), 1 / passes);
+    gl.uniform1f(gl.getUniformLocation(displayProg, "uExposure"), exposure);
+    gl.bindVertexArray(null);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.DEPTH_TEST);
+  }
   // ───── draw debug overlays (if enabled and any) ─────
   if (overlayEnabled && (viewBoxVerts + treeBoxVerts) > 0) {
     gl.useProgram(bboxProg);
@@ -593,4 +758,11 @@ function createProgram(gl, vertexShader, fragmentShader) {
   return program;
 }
 
-export { drawScene, projectionMatrix, resizeCanvas };
+export {
+  drawScene,
+  projectionMatrix,
+  resizeCanvas,
+  setRenderMode,
+  getRenderMode,
+  luminousSupported,
+};

@@ -629,12 +629,92 @@ input[type="number"] {
   box-shadow: 0 0 0 1.5px white;
   z-index: 1;
   cursor: grab;
+  transition: box-shadow 0.15s;
 }
 
 .control-handle.selected {
   width: 20px;
   height: 20px;
   border-radius: 50%;
+  animation: handle-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes handle-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px white, 0 0 0 5px var(--accent),
+      0 0 14px 4px rgba(139, 124, 248, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 2px white, 0 0 0 7px var(--accent),
+      0 0 24px 8px rgba(139, 124, 248, 0.75);
+  }
+}
+
+/* ───────────────────────── first-visit tutorial hint ───────────────────────── */
+
+#tutorial-hint {
+  position: fixed;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px 12px 18px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(139, 124, 248, 0.5);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.35s, transform 0.35s;
+}
+
+#tutorial-hint.hide {
+  opacity: 0;
+  transform: translateX(-50%) translateY(10px);
+  pointer-events: none;
+}
+
+.tutorial-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.tutorial-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.tutorial-dot.done {
+  background: var(--accent);
+}
+
+.tutorial-text {
+  font-size: 13px;
+}
+
+.tutorial-skip {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.tutorial-skip:hover {
+  background: var(--bg-card);
+  color: var(--text);
 }
 
 @media (pointer: coarse) {

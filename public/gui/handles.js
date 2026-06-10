@@ -1,6 +1,7 @@
 import { transforms, perspective } from "../transforms.js";
 import { drawScene, projectionMatrix } from "../renderer.js";
 import { reRenderTransformForms } from "./transforms_form.js";
+import { tutorialEvent } from "./tutorial.js";
 
 const canvas = document.getElementById("glCanvas");
 
@@ -101,10 +102,12 @@ function handleMouseDown(e) {
 
   selectedTransformIndex = e.target.getAttribute("data-transform-index");
   const transform = transforms[selectedTransformIndex];
+  tutorialEvent("select");
 
   function onMove(x, y) {
     const webgl_coords = update_old_coord(transform.origin, [x, y]);
     transform.origin = webgl_coords;
+    tutorialEvent("move");
   }
 
   registerDragEvents(onMove);
@@ -217,6 +220,7 @@ function canvasMouseDown(e) {
   const clickStartTime = new Date().getTime();
 
   function onMove(x, y) {
+    tutorialEvent("scale");
     // SCALING
     const distance = getDistance(originX, originY, x, y);
     const distance_ratio = distance / clickStartDistance;

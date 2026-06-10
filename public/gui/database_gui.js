@@ -4,6 +4,8 @@ import {
   list_fractals,
   set_favorite,
   delete_fractal,
+  getCurrentFractalId,
+  setCurrentFractal,
 } from "../database.js";
 import { toast } from "./toast.js";
 import { tutorialEvent } from "./tutorial.js";
@@ -93,6 +95,9 @@ function createFractalItem(fractal) {
       try {
         await delete_fractal(fractal._id);
         cachedFractals = cachedFractals.filter((f) => f._id !== fractal._id);
+        if (getCurrentFractalId() === fractal._id) {
+          setCurrentFractal(null);
+        }
         renderFractalList();
         toast(`Deleted "${fractal.name}"`);
       } catch (error) {
@@ -219,3 +224,37 @@ document.getElementById("fractal-name").addEventListener("keypress", (event) => 
     saveFractal();
   }
 });
+
+// Copy a shareable link to the currently loaded/saved fractal
+document.getElementById("copy-link-btn").addEventListener("click", async () => {
+  const id = getCurrentFractalId();
+  if (!id) {
+    toast("Save or load a fractal first to get a link", "error");
+    return;
+  }
+  const link = `${location.origin}/?f=${id}`;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Link copied 🔗", "success");
+  } catch {
+    // clipboard API unavailable: fall back to the legacy path
+    const ta = document.createElement("textarea");
+    ta.value = link;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    toast("Link copied 🔗", "success");
+  }
+});
+
+// Deep link: ?f=<id> loads that fractal on page open
+const sharedId = new URLSearchParams(location.search).get("f");
+if (sharedId) {
+  load_fractal(sharedId)
+    .then((fractal) => toast(`Loaded "${fractal.name}"`, "success"))
+    .catch(() => {
+      toast("Couldn't load the linked fractal", "error");
+      setCurrentFractal(null);
+    });
+}

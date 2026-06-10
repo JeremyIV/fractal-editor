@@ -10,6 +10,25 @@ import { commitHistory } from "./history.js";
 // API is served by the same Express server that serves this page
 const API_BASE_URL = "";
 
+// The id of the saved fractal currently on the canvas (set by load/save),
+// mirrored into the URL as ?f=<id> so the address bar is always shareable
+let currentFractalId = null;
+
+function setCurrentFractal(id) {
+  currentFractalId = id;
+  const url = new URL(window.location);
+  if (id) {
+    url.searchParams.set("f", id);
+  } else {
+    url.searchParams.delete("f");
+  }
+  history.replaceState(null, "", url);
+}
+
+function getCurrentFractalId() {
+  return currentFractalId;
+}
+
 /**
  * Save the current fractal to the database
  * @param {string} name - Name for the fractal
@@ -44,7 +63,9 @@ async function save_fractal(name) {
     );
   }
 
-  return response.json();
+  const result = await response.json();
+  setCurrentFractal(result.id);
+  return result;
 }
 
 /**
@@ -100,6 +121,7 @@ async function load_fractal(id) {
   refreshTransitionMatrixUI();
   drawScene();
   commitHistory(); // loading is undoable back to the previous state
+  setCurrentFractal(fractal._id);
   return fractal;
 }
 
@@ -169,4 +191,12 @@ window.list_fractals = list_fractals;
 window.set_favorite = set_favorite;
 window.delete_fractal = delete_fractal;
 
-export { save_fractal, load_fractal, list_fractals, set_favorite, delete_fractal };
+export {
+  save_fractal,
+  load_fractal,
+  list_fractals,
+  set_favorite,
+  delete_fractal,
+  getCurrentFractalId,
+  setCurrentFractal,
+};

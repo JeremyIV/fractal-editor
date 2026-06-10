@@ -389,6 +389,11 @@ input[type="number"] {
   flex: 1;
 }
 
+.share-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
 .load-header {
   display: flex;
   align-items: center;

@@ -655,9 +655,8 @@ input[type="number"] {
 
 #tutorial-hint {
   position: fixed;
-  bottom: 84px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: -9999px; /* positioned by JS, anchored to the control point */
+  top: -9999px;
   z-index: 90;
   display: flex;
   align-items: center;
@@ -669,13 +668,33 @@ input[type="number"] {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
-  transition: opacity 0.35s, transform 0.35s;
+  transition: opacity 0.35s, left 0.2s ease-out, top 0.2s ease-out;
 }
 
 #tutorial-hint.hide {
   opacity: 0;
-  transform: translateX(-50%) translateY(10px);
   pointer-events: none;
+}
+
+.tutorial-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  background: rgb(26, 26, 33);
+  transform: rotate(45deg);
+}
+
+.tutorial-arrow.on-top {
+  top: -7px;
+  border-top: 1px solid rgba(139, 124, 248, 0.5);
+  border-left: 1px solid rgba(139, 124, 248, 0.5);
+}
+
+.tutorial-arrow.on-bottom {
+  bottom: -7px;
+  border-bottom: 1px solid rgba(139, 124, 248, 0.5);
+  border-right: 1px solid rgba(139, 124, 248, 0.5);
 }
 
 .tutorial-dots {

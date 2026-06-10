@@ -1,11 +1,18 @@
-// First-visit walkthrough for the control-point interactions.
-// A hint pill is anchored next to the relevant control point with an
-// arrow pointing at it, advances as the user performs each action, and
-// never shows again (localStorage).
+// First-visit walkthrough for the editor.
+// A hint pill is anchored next to each target with an arrow pointing at
+// it, advances as the user performs each action in order, and never
+// shows again (localStorage).
 import { toast } from "./toast.js";
 
 const STORAGE_KEY = "sg-tutorial-done";
 const GAP = 26; // px between the anchor point and the pill
+
+function centerOf(el) {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return null; // display: none
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
 
 function firstHandle() {
   return centerOf(document.getElementById("handle-0"));
@@ -18,18 +25,16 @@ function selectedHandle() {
   );
 }
 
-function centerOf(el) {
-  if (!el) return null;
-  const rect = el.getBoundingClientRect();
-  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-}
-
 // A point in the empty space beside the selected handle
 function spaceBesideHandle() {
   const p = selectedHandle();
   if (!p) return null;
   const dx = p.x < window.innerWidth - 220 ? 110 : -110;
   return { x: p.x + dx, y: p.y };
+}
+
+function panelOpen(id) {
+  return document.getElementById(id).classList.contains("open");
 }
 
 const STEPS = [
@@ -39,6 +44,19 @@ const STEPS = [
     event: "scale",
     text: "Drag the space around it to scale & rotate",
     anchor: spaceBesideHandle,
+    onComplete: () => toast("Quick-click a point to deselect"),
+  },
+  {
+    event: "menu",
+    text: "Edit exact values, colors & the transition matrix here",
+    anchor: () => centerOf(document.getElementById("menu-toggle")),
+    satisfied: () => panelOpen("transform-gui"),
+  },
+  {
+    event: "fractals",
+    text: "Save your fractal & browse everyone's here",
+    anchor: () => centerOf(document.getElementById("database-menu-toggle")),
+    satisfied: () => panelOpen("database-gui"),
   },
 ];
 
@@ -105,7 +123,7 @@ function buildHint() {
 function positionHint() {
   if (!hintEl || stepIndex < 0 || stepIndex >= STEPS.length) return;
   const anchor = STEPS[stepIndex].anchor();
-  if (!anchor) return; // handles not created yet; try next frame
+  if (!anchor) return; // target not available yet; try next frame
 
   const width = hintEl.offsetWidth;
   const height = hintEl.offsetHeight;
@@ -147,23 +165,30 @@ function dismiss() {
   stepIndex = STEPS.length;
 }
 
+function advance() {
+  stepIndex++;
+  // skip steps the user has already satisfied (e.g. panel already open)
+  while (stepIndex < STEPS.length && STEPS[stepIndex].satisfied?.()) {
+    stepIndex++;
+  }
+  if (stepIndex >= STEPS.length) {
+    markDone();
+    dismiss();
+    toast("That's it — have fun! 🎉", "success");
+  } else {
+    showStep(stepIndex);
+  }
+}
+
 /**
- * Report a user interaction ("select" | "move" | "scale").
+ * Report a user interaction ("select" | "move" | "scale" | "menu" | "fractals").
  * Advances the walkthrough when it matches the awaited step.
  */
 export function tutorialEvent(name) {
   if (stepIndex < 0 || stepIndex >= STEPS.length || !hintEl) return;
-  const eventIndex = STEPS.findIndex((s) => s.event === name);
-  if (eventIndex < stepIndex) return; // already done that step
-
-  if (eventIndex === STEPS.length - 1) {
-    markDone();
-    dismiss();
-    toast("That's it! Quick-click a point to deselect 🎉", "success");
-  } else {
-    stepIndex = eventIndex + 1;
-    showStep(stepIndex);
-  }
+  if (STEPS[stepIndex].event !== name) return; // strict order
+  STEPS[stepIndex].onComplete?.();
+  advance();
 }
 
 if (!isDone()) {

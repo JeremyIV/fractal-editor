@@ -5,6 +5,7 @@ import {
   set_favorite,
 } from "../database.js";
 import { toast } from "./toast.js";
+import { tutorialEvent } from "./tutorial.js";
 
 const panel = document.getElementById("database-gui");
 const openButton = document.getElementById("database-menu-toggle");
@@ -17,6 +18,7 @@ let cachedFractals = [];
 function openDatabaseToolbar() {
   panel.classList.add("open");
   openButton.style.display = "none";
+  tutorialEvent("fractals");
   loadFractalList();
 }
 

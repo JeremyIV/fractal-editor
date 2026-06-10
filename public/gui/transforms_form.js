@@ -2,6 +2,7 @@ import { recreateHandles, repositionHandles } from "./handles.js";
 import { drawScene } from "../renderer.js";
 import { transforms, transition_matrix } from "../transforms.js";
 import { refreshTransitionMatrixUI } from "./transition_matrix.js";
+import { commitHistory, commitHistorySoon } from "../history.js";
 
 const transformFormsContainer = document.getElementById("transform-forms");
 
@@ -71,6 +72,7 @@ function updateTransforms() {
   // Redraw the scene with new transform values
   repositionHandles();
   drawScene();
+  commitHistorySoon(); // coalesce a typing/slider burst into one undo step
 }
 
 function removeTransform(form) {
@@ -85,6 +87,7 @@ function removeTransform(form) {
   recreateHandles();
   refreshTransitionMatrixUI();
   drawScene();
+  commitHistory();
 }
 
 function numberField(label, value, index, property, step) {
@@ -166,6 +169,7 @@ function addTransform() {
   recreateHandles();
   refreshTransitionMatrixUI();
   drawScene();
+  commitHistory();
 }
 
 function reRenderTransformForms() {

@@ -2,6 +2,7 @@ import { transforms, perspective } from "../transforms.js";
 import { drawScene, projectionMatrix } from "../renderer.js";
 import { reRenderTransformForms } from "./transforms_form.js";
 import { tutorialEvent } from "./tutorial.js";
+import { commitHistory } from "../history.js";
 
 const canvas = document.getElementById("glCanvas");
 
@@ -75,6 +76,7 @@ function registerDragEvents(onMove, onUp) {
     document.removeEventListener("touchmove", onTouchMove, { passive: false });
     document.removeEventListener("touchend", onTouchEnd, { passive: false });
     drawScene();
+    commitHistory(); // one undo step per completed drag gesture
   }
 
   function onTouchEnd(e) {

@@ -5,6 +5,7 @@ import { recreateHandles } from "./gui/handles.js";
 import { reRenderTransformForms } from "./gui/transforms_form.js";
 import { refreshTransitionMatrixUI } from "./gui/transition_matrix.js";
 import { setModeUI } from "./gui/render_mode.js";
+import { commitHistory } from "./history.js";
 
 // API is served by the same Express server that serves this page
 const API_BASE_URL = "";
@@ -98,6 +99,7 @@ async function load_fractal(id) {
   reRenderTransformForms();
   refreshTransitionMatrixUI();
   drawScene();
+  commitHistory(); // loading is undoable back to the previous state
   return fractal;
 }
 

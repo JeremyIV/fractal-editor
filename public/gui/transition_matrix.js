@@ -1,5 +1,6 @@
 import { transforms, transition_matrix } from "../transforms.js";
 import { drawScene } from "../renderer.js";
+import { commitHistory } from "../history.js";
 
 function colorDot(index) {
   const dot = document.createElement("span");
@@ -23,6 +24,7 @@ function updateTransitionMatrix() {
     }
   }
   drawScene();
+  commitHistory();
 }
 
 function buildMatrixGui() {

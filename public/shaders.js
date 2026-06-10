@@ -24,12 +24,6 @@ uniform mat4  uPrefixMatrices[MAX_PFX];
 uniform vec4  uPrefixColors[MAX_PFX];
 uniform int   uPrefixInner[MAX_PFX];  // innermost transform of each prefix (-1 = none)
 
-// 1 = stochastic colors (opaque mode): each map OVERRIDES the color with
-// probability alpha, keeping colors saturated; low alpha reaches deeper
-// (finer-scale) maps, so alpha acts as a frequency dial.
-// 0 = smooth mix accumulation (luminous mode).
-uniform int   uStochasticColor;
-
 uniform mat4  uProjectionMatrix;
 
 out vec4 vColor;
@@ -88,34 +82,20 @@ void main() {
         offset = uTransforms[j] * offset;
 
         vec4 C = uColors[j];
-        if (uStochasticColor == 1) {
-            rand = nextRandomInt(rand);
-            if (getRandomFloat(rand) < C.a || transformedColor.a == 0.0) {
-                transformedColor = vec4(C.rgb, 1.0);
-            }
-        } else {
-            float alpha = (transformedColor.a==0.0)?1.0:C.a;
-            transformedColor.a = 1.0;
-            transformedColor   = mix(transformedColor, C, alpha);
-            transformedColor.a = 1.0;
-        }
+        float alpha = (transformedColor.a==0.0)?1.0:C.a;
+        transformedColor.a = 1.0;
+        transformedColor   = mix(transformedColor, C, alpha);
+        transformedColor.a = 1.0;
     }
 
     offset = uPrefixMatrices[chosen] * offset;
 
     /* prefix colour blending */
     vec4 prefixC = uPrefixColors[chosen];
-    if (uStochasticColor == 1) {
-        rand = nextRandomInt(rand);
-        if (prefixC.a > 0.0 && getRandomFloat(rand) < prefixC.a) {
-            transformedColor = vec4(prefixC.rgb, 1.0);
-        }
-    } else {
-        float alpha = (transformedColor.a==0.0)?1.0:prefixC.a;
-        transformedColor.a = 1.0;
-        transformedColor   = mix(transformedColor, prefixC, alpha);
-        transformedColor.a = 1.0;
-    }
+    float alpha = (transformedColor.a==0.0)?1.0:prefixC.a;
+    transformedColor.a = 1.0;
+    transformedColor   = mix(transformedColor, prefixC, alpha);
+    transformedColor.a = 1.0;
 
     vColor       = transformedColor;
     gl_Position  = uProjectionMatrix * offset;

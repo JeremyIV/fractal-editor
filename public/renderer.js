@@ -651,11 +651,6 @@ function renderSinglePass(quick, shouldClear) {
 
   setUniform1f("uN", num_points);
   setUniform1f("uR", recursion_level);
-  // opaque: saturated stochastic colors; luminous: smooth mix accumulation
-  gl.uniform1i(
-    gl.getUniformLocation(program, "uStochasticColor"),
-    renderMode === "opaque" ? 1 : 0
-  );
   setUniform1f("uSphereRadius", sphere_radius);
   
   // Set the pass count uniform for randomization

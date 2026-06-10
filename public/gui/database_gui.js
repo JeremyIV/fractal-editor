@@ -167,7 +167,8 @@ async function loadFractalList() {
     cachedFractals = await list_fractals(currentSort);
     renderFractalList();
   } catch (error) {
-    fractalListContainer.innerHTML = `<div class="list-message error">Error loading fractals: ${error.message}</div>`;
+    fractalListContainer.innerHTML = '<div class="list-message error"></div>';
+    fractalListContainer.firstChild.textContent = `Error loading fractals: ${error.message}`;
   }
 }
 

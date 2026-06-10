@@ -29,6 +29,8 @@ html {
 
 canvas {
   display: block;
+  /* the app owns all touch gestures on the canvas (pan, pinch, drag) */
+  touch-action: none;
 }
 
 button {
@@ -765,6 +767,10 @@ input[type="number"] {
   color: var(--text);
 }
 
+.control-handle {
+  touch-action: none;
+}
+
 @media (pointer: coarse) {
   .control-handle {
     width: 30px;
@@ -774,5 +780,11 @@ input[type="number"] {
   .control-handle.selected {
     width: 40px;
     height: 40px;
+  }
+
+  /* 16px+ stops iOS Safari from auto-zooming the page when a field is focused */
+  input[type="number"],
+  input[type="text"] {
+    font-size: 16px;
   }
 }

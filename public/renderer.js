@@ -3,8 +3,10 @@ import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
 import { buildPrefixTree, truncatePrefixTree } from "./buildPrefixTree.js";
 import { getCumulativeMarkovMatrix } from "./markov.js";
 
-let MAX_POINTS = 1_000_000;
-let QUICK_MAX_POINTS = 100_000;
+// touch devices get a smaller point budget so interaction stays smooth
+const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
+let MAX_POINTS = IS_TOUCH ? 300_000 : 1_000_000;
+let QUICK_MAX_POINTS = IS_TOUCH ? 60_000 : 100_000;
 const MAX_PFX = 32;                       // keep small for WebGL uniform limits
 
 let POINT_SIZE = 1.0
@@ -363,6 +365,7 @@ function updatePrefixTree(projMatrix) {
     gl.useProgram(program);
     gl.uniform1i  (gl.getUniformLocation(program,"uNumPrefixes"), 1);
     gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"),   [1.0]);
+    gl.uniform1iv(gl.getUniformLocation(program,"uPrefixInner"), new Int32Array([-1]));
 
     const I = mat4.create();                         // identity mat4
     const arr = new Float32Array(16);  // 4×4 → 16
@@ -427,6 +430,13 @@ function updatePrefixTree(projMatrix) {
   gl.useProgram(program);
   gl.uniform1i(gl.getUniformLocation(program,"uNumPrefixes"), use.length);
   gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"), cdf);
+
+  // innermost transform of each prefix: seeds the shader's reverse-order
+  // chain so the chain→prefix junction respects the transition matrix
+  const inner = new Int32Array(
+    use.map((n) => (n.prefix.length ? n.prefix[n.prefix.length - 1] : -1))
+  );
+  gl.uniform1iv(gl.getUniformLocation(program, "uPrefixInner"), inner);
   const pfxMatLoc = gl.getUniformLocation(program, "uPrefixMatrices[0]");
 
   const flat = new Float32Array(mats.length * 16);   // 16 = 4×4
@@ -602,9 +612,14 @@ function renderSinglePass(quick, shouldClear) {
     determinants.push(determinant);
   }
 
+  // the shader samples chains in reverse time order, so it needs the
+  // distribution over PREDECESSORS of each state: transpose the matrix
+  const transposed_matrix = transition_matrix.map((row, i) =>
+    row.map((_, j) => transition_matrix[j][i])
+  );
   let cumulative_markov_matrix = getCumulativeMarkovMatrix(
     determinants,
-    transition_matrix
+    transposed_matrix
   );
 
   const cumulativeMarkovMatrixLoc = gl.getUniformLocation(

@@ -13,6 +13,14 @@ function get_cumulative_probs(determinants, mask) {
       total += determinants[i];
     }
   }
+
+  // no allowed option (e.g. a state with no valid predecessor):
+  // fall back to the unconditional distribution rather than dividing by 0
+  if (total === 0) {
+    mask = determinants.map(() => true);
+    total = determinants.reduce((a, b) => a + b, 0);
+  }
+
   let cumulative_sum = 0.0;
   let cumulative_probs = [];
   for (let i = 0; i < determinants.length; i++) {

@@ -131,7 +131,10 @@ export function buildPrefixTree(
     if (terminal) return node;
 
     for(let i=0;i<m;++i){
-      if (lastIdx>=0 && !transitionMatrix[lastIdx][i]) continue;
+      // appending i makes it the innermost map: in time order, i is
+      // applied immediately BEFORE lastIdx, so the constraint is
+      // "lastIdx may follow i", i.e. matrix[i][lastIdx]
+      if (lastIdx>=0 && !transitionMatrix[i][lastIdx]) continue;
       const child = recurse([...prefix,i], i, depth-1);
       if (child) node.children[i]=child;
     }

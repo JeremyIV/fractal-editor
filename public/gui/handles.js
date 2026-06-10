@@ -46,6 +46,7 @@ function convertTouchEvent(event) {
 // onUp is optional, and runs in addition to the standard onUp events
 function registerDragEvents(onMove, onUp) {
   function onMouseMove(e) {
+    if (pinching) return; // two-finger gesture owns the pointer
     if (e.preventDefault !== undefined) {
       e.preventDefault();
     }
@@ -329,7 +330,74 @@ canvas.addEventListener("wheel", handleMouseWheel, { passive: false });
 canvas.addEventListener(
   "touchstart",
   function (event) {
+    if (event.touches.length >= 2) return; // handled by the pinch gesture
     canvasMouseDown(convertTouchEvent(event));
+  },
+  { passive: false }
+);
+
+// ── pinch to zoom (mobile) ──
+let pinching = false;
+let pinchStart = null;
+
+function touchInfo(e) {
+  const a = e.touches[0];
+  const b = e.touches[1];
+  return {
+    dist: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY),
+    midX: (a.clientX + b.clientX) / 2,
+    midY: (a.clientY + b.clientY) / 2,
+  };
+}
+
+canvas.addEventListener(
+  "touchstart",
+  function (event) {
+    if (event.touches.length < 2) return;
+    event.preventDefault();
+    pinching = true; // single-finger drag handlers stand down (see onMouseMove)
+    pinchStart = { ...touchInfo(event), zoom: zoomLevel, panX, panY };
+  },
+  { passive: false }
+);
+
+document.addEventListener(
+  "touchmove",
+  function (event) {
+    if (!pinching || event.touches.length < 2) return;
+    event.preventDefault();
+    const info = touchInfo(event);
+    const rect = canvas.getBoundingClientRect();
+    const ndcX = ((info.midX - rect.left) / canvas.width) * 2 - 1;
+    const ndcY = -(((info.midY - rect.top) / canvas.height) * 2 - 1);
+
+    // keep the world point that started under the fingers' midpoint anchored
+    const worldX = ndcX / pinchStart.zoom - pinchStart.panX;
+    const worldY = ndcY / pinchStart.zoom - pinchStart.panY;
+
+    zoomLevel = Math.max(
+      0.1,
+      Math.min(1000, pinchStart.zoom * (info.dist / pinchStart.dist))
+    );
+    panX = ndcX / zoomLevel - worldX;
+    panY = ndcY / zoomLevel - worldY;
+
+    updatePerspectiveMatrix();
+    repositionHandles();
+    drawScene(true);
+  },
+  { passive: false }
+);
+
+document.addEventListener(
+  "touchend",
+  function (event) {
+    // stay in pinch mode until all fingers lift, so the leftover finger
+    // doesn't cause a pan jump
+    if (pinching && event.touches.length === 0) {
+      pinching = false;
+      drawScene();
+    }
   },
   { passive: false }
 );

@@ -458,13 +458,25 @@ function recreateHandles() {
   // Remove all existing handles
   const existingHandles = document.querySelectorAll(".control-handle");
   existingHandles.forEach(handle => handle.remove());
-  
+
   // Clear selection
   selectedTransformIndex = null;
-  
+
   // Create new handles for current transforms
   createHandles();
 }
+
+// Hide/show all control points. Hiding also deselects, so canvas drags
+// pan instead of invisibly scaling the last selected transform.
+function setHandlesVisible(visible) {
+  document.body.classList.toggle("hide-handles", !visible);
+  if (!visible) {
+    selectedTransformIndex = null;
+    document
+      .querySelectorAll(".control-handle.selected")
+      .forEach((handle) => handle.classList.remove("selected"));
+  }
+}
 window.addEventListener("resize", repositionHandles);
 
-export { createHandles, repositionHandles, recreateHandles };
+export { createHandles, repositionHandles, recreateHandles, setHandlesVisible };

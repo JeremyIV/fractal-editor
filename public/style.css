@@ -157,10 +157,15 @@ button {
 
 .panel-footer {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.panel-footer .btn {
+  width: 100%;
 }
 
 /* ───────────────────────── shared button styles ───────────────────────── */
@@ -198,14 +203,8 @@ button {
   cursor: default;
 }
 
-#transition-matrix {
-  flex: 1;
-}
-
-#add-transform {
-  width: 42px;
-  font-size: 18px;
-  line-height: 1;
+body.hide-handles .control-handle {
+  display: none;
 }
 
 .render-mode-row {

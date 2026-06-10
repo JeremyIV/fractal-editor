@@ -7,6 +7,9 @@ import { getCumulativeMarkovMatrix } from "./markov.js";
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
 let MAX_POINTS = IS_TOUCH ? 300_000 : 1_000_000;
 let QUICK_MAX_POINTS = IS_TOUCH ? 60_000 : 100_000;
+// stop progressive refinement once the image has converged, instead of
+// rendering forever -- keeps mobile GPUs cool and batteries alive
+const MAX_PASSES = IS_TOUCH ? 100 : 250;
 const MAX_PFX = 32;                       // keep small for WebGL uniform limits
 
 let POINT_SIZE = 1.0
@@ -302,12 +305,14 @@ function startProgressiveRendering() {
   function animate() {
     renderSinglePass(false, false);
     currentPassCount++;
-    
-    if (isProgressiveMode) {
+
+    if (isProgressiveMode && currentPassCount < MAX_PASSES) {
       progressiveAnimationId = requestAnimationFrame(animate);
+    } else {
+      progressiveAnimationId = null;
     }
   }
-  
+
   animate();
 }
 

@@ -114,6 +114,13 @@ export function buildPrefixTree(
   const m   = transforms.length;
   const mats= transforms.map(getAffineTransform3D);
 
+  // Hard cap on explored nodes. Slowly-contracting transforms (scale near
+  // 1) otherwise keep every cell viewport-sized through all maxDepth
+  // levels and the tree explodes toward m^maxDepth nodes per frame. The
+  // result is truncated to a handful of prefixes anyway, so exploring
+  // thousands of nodes is wasted work.
+  let nodeBudget = 3000;
+
   function recurse(prefix,lastIdx,depth){
     // composite matrix (reverse order)
     let M = mat4.create();
@@ -125,7 +132,8 @@ export function buildPrefixTree(
     if (verbose) console.log("prefix",prefix,"quad",quad);
 
     if (!quadIntersect(quad, viewBox)) return null;      // prune
-    const terminal = depth===0 || quadInside(quad,viewBox);
+    nodeBudget--;
+    const terminal = depth===0 || nodeBudget<=0 || quadInside(quad,viewBox);
 
     const node = { prefix, quad, terminal, children: new Array(m).fill(null) };
     if (terminal) return node;

@@ -1,4 +1,5 @@
 const path = require("path");
+const compression = require("compression");
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
 
@@ -21,8 +22,19 @@ async function getCollection() {
 }
 
 const app = express();
+app.use(compression());
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    // Cache assets for an hour; keep HTML revalidating so deploys show up immediately
+    maxAge: "1h",
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  })
+);
 
 // List all fractals (metadata only), newest first
 app.get("/api/list", async (req, res) => {

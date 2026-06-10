@@ -1,6 +1,7 @@
-import { transforms, perspective, getAffineTransform3D } from "./transforms.js";
+import { transforms, transition_matrix, perspective, getAffineTransform3D } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
 import { buildPrefixTree, truncatePrefixTree } from "./buildPrefixTree.js";
+import { getCumulativeMarkovMatrix } from "./markov.js";
 
 let MAX_POINTS = 1_000_000;
 let QUICK_MAX_POINTS = 100_000;
@@ -226,32 +227,8 @@ function updatePrefixTree(projMatrix) {
     transition_matrix,
     10                       // maxDepth
   );
-  // count nodes before truncation
-  function countAllNodes(node) {
-    if (!node) return 0;
-    let count = 1;
-    node.children.forEach(c => { if (c) count += countAllNodes(c); });
-    return count;
-  }
-  
-  function countTerminalNodes(node) {
-    if (!node) return 0;
-    if (node.terminal) return 1;
-    let count = 0;
-    node.children.forEach(c => { if (c) count += countTerminalNodes(c); });
-    return count;
-  }
-
-  const nodeCountBefore = countAllNodes(tree);
-  const terminalCountBefore = countTerminalNodes(tree);
-  console.log(`Before truncation - total nodes: ${nodeCountBefore}, terminal nodes: ${terminalCountBefore}`);
-  
   truncatePrefixTree(tree, MAX_PFX)
   window.tree = tree;
-
-  const nodeCountAfter = countAllNodes(tree);
-  const terminalCountAfter = countTerminalNodes(tree);
-  console.log(`After truncation - total nodes: ${nodeCountAfter}, terminal nodes: ${terminalCountAfter}`);
 
   if (!tree) {
     // viewport misses the fractal: upload one "identity" prefix
@@ -277,9 +254,8 @@ function updatePrefixTree(projMatrix) {
     node.children.forEach(c => { if (c) collect(c); });
   })(tree);
 
-  console.log(`Collected terminals: ${terminals.length} (MAX_PFX: ${MAX_PFX})`);
   if (terminals.length > MAX_PFX) {
-    console.log("🚨 TRUNCATION FAILED! Terminal count exceeds MAX_PFX - slicing manually");
+    console.warn(`Prefix tree truncation left ${terminals.length} terminals (max ${MAX_PFX}); slicing`);
   }
 
   // safety guard

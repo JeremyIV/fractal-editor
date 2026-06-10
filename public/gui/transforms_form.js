@@ -1,10 +1,7 @@
 import { createHandles, repositionHandles } from "./handles.js";
 import { drawScene } from "../renderer.js";
-import { transforms } from "../transforms.js";
-// Assuming the transforms array is imported or globally accessible
-// import { transforms } from "./your_transforms_module.js"; // Uncomment if needed
+import { transforms, transition_matrix } from "../transforms.js";
 
-const transformGuiContainer = document.getElementById("transform-gui");
 const transformFormsContainer = document.getElementById("transform-forms");
 
 // Helper function to convert RGBA array to Hex color string

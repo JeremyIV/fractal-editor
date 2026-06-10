@@ -38,17 +38,14 @@ function updateTransitionMatrix(e) {
       transition_matrix[i][j] = checkboxes[i * size + j].checked;
     }
   }
-  console.log(transition_matrix);
   drawScene();
 }
 
 document
   .getElementById("transition-matrix")
   .addEventListener("click", function () {
-    console.log("foo");
     const existingGui = document.getElementById("transition-matrix-gui");
     if (!existingGui) {
-      console.log("bar");
       const guiDiv = document.createElement("div");
       guiDiv.id = "transition-matrix-gui";
       guiDiv.style.position = "absolute";

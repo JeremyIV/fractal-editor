@@ -24,12 +24,6 @@ function getAngle(x0, y0, x1, y1) {
   return angle;
 }
 
-// Simplified for 2D - just returns the vector unchanged
-function rotateVec3(vector) {
-  // In 2D mode, we don't need to rotate vectors in 3D space
-  return vector;
-}
-
 function convertTouchEvent(event) {
   event.preventDefault();
   if (event.touches.length > 0) {
@@ -46,19 +40,13 @@ function convertTouchEvent(event) {
   return event;
 }
 
-// TODO
-// pull out shared logic of click-drag pattern
-
+// onMove: takes in x,y coords of the move event
+// onUp is optional, and runs in addition to the standard onUp events
 function registerDragEvents(onMove, onUp) {
-  // TODO:
-  // onMove: takes in x,y coords of the move event
-  // onUp is optional, and runs in addition to the standard onUp events
-
   function onMouseMove(e) {
     if (e.preventDefault !== undefined) {
       e.preventDefault();
     }
-    const rect = canvas.getBoundingClientRect();
     const parentRect = canvas.parentElement.getBoundingClientRect();
     // Calculate mouse position relative to canvas container (parent element)
     const x = e.clientX - parentRect.left;
@@ -194,8 +182,6 @@ function canvasMouseDown(e) {
 
   // If no transform is selected, pan the view
   if (selectedTransformIndex === null) {
-    // Pan the viewport (previously "rotate the viewport")
-    const rect = canvas.getBoundingClientRect();
     const parentRect = canvas.parentElement.getBoundingClientRect();
     lastMouseX = e.clientX - parentRect.left;
     lastMouseY = e.clientY - parentRect.top;
@@ -215,7 +201,6 @@ function canvasMouseDown(e) {
   const originCoords = to_canvas_coords(transform.origin);
   const originX = originCoords[0];
   const originY = originCoords[1];
-  const rect = canvas.getBoundingClientRect();
   const parentRect = canvas.parentElement.getBoundingClientRect();
   // Calculate mouse position relative to canvas container (parent element)
   const mouseX = e.clientX - parentRect.left;
@@ -427,11 +412,8 @@ function createHandles() {
 
       handle.style.left = `${handle_left}px`;
       handle.style.top = `${handle_top}px`;
-      //handle.style.width = "10px";
-      //handle.style.height = "10px";
-      //handle.style.borderRadius = "10px";
       handle.style.backgroundColor = getHandleColorCode(t.color);
-      handle.style.border = "2px solid black"; // Adjust the size as needed
+      handle.style.border = "2px solid black";
 
       handle.id = "handle-" + index; // Use index to create a unique ID
       handle.setAttribute("data-transform-index", index); // Set data attribute

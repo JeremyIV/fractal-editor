@@ -1,0 +1,123 @@
+// Database functions for loading and saving fractals
+import { transforms, transition_matrix } from "./transforms.js";
+import { drawScene } from "./renderer.js";
+import { recreateHandles } from "./gui/handles.js";
+import { reRenderTransformForms } from "./gui/transforms_form.js";
+import { refreshTransitionMatrixUI } from "./gui/transition_matrix.js";
+
+// API is served by the same Express server that serves this page
+const API_BASE_URL = "";
+
+/**
+ * Save the current fractal to the database
+ * @param {string} name - Name for the fractal
+ * @returns {Promise<Object>} Response from the server
+ */
+async function save_fractal(name) {
+  if (!name || typeof name !== "string") {
+    throw new Error("Fractal name is required and must be a string");
+  }
+
+  const fractalData = {
+    name: name,
+    data: {
+      transforms: transforms,
+      transition_matrix: transition_matrix,
+    },
+  };
+
+  const response = await fetch(`${API_BASE_URL}/api/upload`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(fractalData),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Failed to save fractal: ${errorData.error || response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+/**
+ * Load a fractal from the database by ID
+ * @param {string} id - MongoDB ObjectId of the fractal to load
+ * @returns {Promise<Object>} The fractal data
+ */
+async function load_fractal(id) {
+  if (!id || typeof id !== "string") {
+    throw new Error("Fractal ID is required and must be a string");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/get/${id}`);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`Fractal with ID "${id}" not found`);
+    }
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Failed to load fractal: ${errorData.error || response.statusText}`
+    );
+  }
+
+  const fractal = await response.json();
+
+  if (!fractal.data || typeof fractal.data !== "object") {
+    throw new Error("Invalid fractal data format");
+  }
+
+  if (!Array.isArray(fractal.data.transforms)) {
+    throw new Error("Invalid fractal data: transforms must be an array");
+  }
+
+  if (!Array.isArray(fractal.data.transition_matrix)) {
+    throw new Error("Invalid fractal data: transition_matrix must be an array");
+  }
+
+  // Replace the contents of the shared arrays in place so every module
+  // holding a reference to them sees the loaded fractal
+  transforms.length = 0;
+  transforms.push(...fractal.data.transforms);
+
+  transition_matrix.length = 0;
+  fractal.data.transition_matrix.forEach((row) => {
+    transition_matrix.push([...row]);
+  });
+
+  // Update all UI components for the new transforms
+  recreateHandles();
+  reRenderTransformForms();
+  refreshTransitionMatrixUI();
+  drawScene();
+  return fractal;
+}
+
+/**
+ * List all fractals in the database
+ * @returns {Promise<Array>} Array of fractal metadata (name, id, created_at)
+ */
+async function list_fractals() {
+  const response = await fetch(`${API_BASE_URL}/api/list`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      `Failed to list fractals: ${errorData.error || response.statusText}`
+    );
+  }
+
+  return response.json();
+}
+
+// Console convenience
+window.save_fractal = save_fractal;
+window.load_fractal = load_fractal;
+window.list_fractals = list_fractals;
+
+export { save_fractal, load_fractal, list_fractals };

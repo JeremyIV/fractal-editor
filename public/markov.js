@@ -50,3 +50,5 @@ function flattenAndPad(matrix, padded_size) {
   }
   return padded_matrix;
 }
+
+export { getCumulativeMarkovMatrix };

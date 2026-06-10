@@ -25,7 +25,6 @@
           children: Node[] }
    ========================================================================= */
 
-//import { mat4, vec4 } from "gl-matrix";
 import { getAffineTransform3D } from "./transforms.js";
 
 // ---------- geometry helpers ----------

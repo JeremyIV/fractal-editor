@@ -15,9 +15,6 @@ function openToolbar() {
 document.getElementById("menu-toggle").onclick = openToolbar;
 
 function closeToolbar() {
-  const rect = canvas.getBoundingClientRect();
-
-  console.log("Closing toolbar!!");
   document.getElementById("transform-gui").style.width = "0";
   canvas.style.marginRight = "0";
   canvas.width = canvas.width + 300;

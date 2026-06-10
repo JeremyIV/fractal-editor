@@ -1,25 +1,14 @@
-import { resizeCanvas } from "../renderer.js";
-import { repositionHandles } from "./handles.js";
+// The transform panel overlays the canvas, so opening/closing it never
+// resizes or redraws the WebGL scene.
+const panel = document.getElementById("transform-gui");
+const openButton = document.getElementById("menu-toggle");
 
-const canvas = document.getElementById("glCanvas");
+openButton.onclick = function () {
+  panel.classList.add("open");
+  openButton.style.display = "none";
+};
 
-function openToolbar() {
-  document.getElementById("transform-gui").style.width = "300px";
-  canvas.style.marginRight = "300px";
-  canvas.width = canvas.width - 300;
-  document.getElementById("menu-toggle").style.display = "none";
-  resizeCanvas();
-  repositionHandles();
-}
-
-document.getElementById("menu-toggle").onclick = openToolbar;
-
-function closeToolbar() {
-  document.getElementById("transform-gui").style.width = "0";
-  canvas.style.marginRight = "0";
-  canvas.width = canvas.width + 300;
-  document.getElementById("menu-toggle").style.display = "";
-  resizeCanvas();
-  repositionHandles();
-}
-document.getElementById("closeToolbar").onclick = closeToolbar;
+document.getElementById("closeToolbar").onclick = function () {
+  panel.classList.remove("open");
+  openButton.style.display = "";
+};

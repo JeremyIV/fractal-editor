@@ -1,93 +1,99 @@
 import { transforms, transition_matrix } from "../transforms.js";
 import { drawScene } from "../renderer.js";
 
-function refreshTransitionMatrixUI() {
-  const existingGui = document.getElementById("transition-matrix-gui");
-  if (!existingGui) {
-    return; // UI is not currently open, nothing to refresh
-  }
-
-  // Check if the matrix size has changed - if so, recreate the entire UI
-  const currentCheckboxes = existingGui.querySelectorAll("input[type='checkbox']");
-  const expectedSize = transition_matrix.length * transition_matrix.length;
-  
-  if (currentCheckboxes.length !== expectedSize) {
-    // Size mismatch - close and recreate the UI
-    existingGui.remove();
-    // Don't automatically reopen - let user click the button if they want to see it
-    return;
-  }
-
-  // Size matches - just update checkbox states
-  const size = transition_matrix.length;
-  for (let i = 0; i < size; i++) {
-    for (let j = 0; j < size; j++) {
-      currentCheckboxes[i * size + j].checked = transition_matrix[i][j];
-    }
-  }
+function colorDot(index) {
+  const dot = document.createElement("span");
+  dot.className = "tm-dot";
+  const c = transforms[index]?.color || [1, 1, 1, 1];
+  dot.style.backgroundColor = `rgb(${Math.round(c[0] * 255)}, ${Math.round(
+    c[1] * 255
+  )}, ${Math.round(c[2] * 255)})`;
+  dot.title = `Transform ${index + 1}`;
+  return dot;
 }
 
-function updateTransitionMatrix(e) {
+function updateTransitionMatrix() {
   const checkboxes = document.querySelectorAll(
     "#transition-matrix-gui input[type='checkbox']"
   );
-  const size = Math.sqrt(checkboxes.length);
+  const size = transition_matrix.length;
   for (let i = 0; i < size; i++) {
     for (let j = 0; j < size; j++) {
-      // Update the existing matrix's values instead of reassigning the variable
       transition_matrix[i][j] = checkboxes[i * size + j].checked;
     }
   }
   drawScene();
 }
 
+function buildMatrixGui() {
+  const guiDiv = document.createElement("div");
+  guiDiv.id = "transition-matrix-gui";
+
+  const title = document.createElement("div");
+  title.className = "tm-title";
+  title.textContent = "Transition Matrix";
+  guiDiv.appendChild(title);
+
+  const size = transition_matrix.length;
+  const table = document.createElement("table");
+
+  // Header row: which transform each column may transition *to*
+  const headerRow = document.createElement("tr");
+  headerRow.appendChild(document.createElement("th")); // corner
+  for (let j = 0; j < size; j++) {
+    const th = document.createElement("th");
+    th.appendChild(colorDot(j));
+    headerRow.appendChild(th);
+  }
+  table.appendChild(headerRow);
+
+  for (let i = 0; i < size; i++) {
+    const tr = document.createElement("tr");
+    const rowHeader = document.createElement("th");
+    rowHeader.appendChild(colorDot(i));
+    tr.appendChild(rowHeader);
+    for (let j = 0; j < size; j++) {
+      const td = document.createElement("td");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = transition_matrix[i][j];
+      checkbox.title = `Allow transform ${i + 1} → ${j + 1}`;
+      checkbox.addEventListener("change", updateTransitionMatrix);
+      td.appendChild(checkbox);
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  guiDiv.appendChild(table);
+
+  const closeButton = document.createElement("button");
+  closeButton.className = "tm-close";
+  closeButton.textContent = "×";
+  closeButton.onclick = () => guiDiv.remove();
+  guiDiv.appendChild(closeButton);
+
+  document.body.appendChild(guiDiv);
+}
+
+// Rebuild the popup (if open) so it tracks transform add/remove/recolor
+function refreshTransitionMatrixUI() {
+  const existingGui = document.getElementById("transition-matrix-gui");
+  if (!existingGui) {
+    return;
+  }
+  existingGui.remove();
+  buildMatrixGui();
+}
+
 document
   .getElementById("transition-matrix")
   .addEventListener("click", function () {
     const existingGui = document.getElementById("transition-matrix-gui");
-    if (!existingGui) {
-      const guiDiv = document.createElement("div");
-      guiDiv.id = "transition-matrix-gui";
-      guiDiv.style.position = "absolute";
-      guiDiv.style.right = "20px";
-      guiDiv.style.bottom = "20px";
-      guiDiv.style.border = "1px solid black";
-      guiDiv.style.padding = "10px";
-      guiDiv.style.paddingTop = "30px"; // Increased padding at the top
-      guiDiv.style.backgroundColor = "white";
-      guiDiv.style.zIndex = 2;
-
-      const size = transition_matrix.length;
-      const table = document.createElement("table");
-      for (let i = 0; i < size; i++) {
-        const tr = document.createElement("tr");
-        for (let j = 0; j < size; j++) {
-          const td = document.createElement("td");
-          const checkbox = document.createElement("input");
-          checkbox.type = "checkbox";
-          checkbox.checked = transition_matrix[i][j];
-          checkbox.addEventListener("change", updateTransitionMatrix);
-          td.appendChild(checkbox);
-          tr.appendChild(td);
-        }
-        table.appendChild(tr);
-      }
-      guiDiv.appendChild(table);
-
-      const closeButton = document.createElement("button");
-      closeButton.textContent = "X";
-      closeButton.style.position = "absolute";
-      closeButton.style.top = "5px";
-      closeButton.style.right = "5px";
-      closeButton.onclick = function () {
-        guiDiv.remove();
-      };
-      guiDiv.appendChild(closeButton);
-
-      document.body.appendChild(guiDiv);
+    if (existingGui) {
+      existingGui.remove(); // toggle closed
+    } else {
+      buildMatrixGui();
     }
-
-    drawScene();
   });
 
 export { refreshTransitionMatrixUI };

@@ -1,32 +1,47 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Fractal Editor</title>
+    <title>Sierpinski Garden — Fractal Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><polygon points='50,8 95,88 5,88' fill='%238b7cf8'/><polygon points='50,48 73,88 27,88' fill='%23000'/></svg>" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <canvas id="glCanvas"></canvas>
-    <button id="menu-toggle">☰</button>
-    <button id="database-menu-toggle">💾</button>
-    <div id="transform-gui">
-      <a href="javascript:void(0)" id="closeToolbar" class="closeToolbar">×</a>
-      <div id="transform-forms">
-        <!-- Transform forms will be dynamically inserted here -->
+    <button id="menu-toggle" class="corner-btn" title="Transforms">☰</button>
+    <button id="database-menu-toggle" class="corner-btn" title="Save / Load">💾</button>
+
+    <div id="transform-gui" class="panel">
+      <div class="panel-header">
+        <h2>Transforms</h2>
+        <a href="javascript:void(0)" id="closeToolbar" class="closeToolbar">×</a>
       </div>
-      <button id="transition-matrix">Transition Matrix</button>
-      <button id="add-transform">+</button>
+      <div class="panel-body">
+        <div id="transform-forms">
+          <!-- Transform forms will be dynamically inserted here -->
+        </div>
+      </div>
+      <div class="panel-footer">
+        <button id="transition-matrix" class="btn">Transition Matrix</button>
+        <button id="add-transform" class="btn btn-primary" title="Add transform">+</button>
+      </div>
     </div>
 
-    <div id="database-gui">
-      <a href="javascript:void(0)" id="closeDatabaseToolbar" class="closeToolbar">×</a>
-      <div id="database-content">
-        <div id="save-section">
-          <h3>Save Fractal</h3>
-          <input type="text" id="fractal-name" placeholder="Enter fractal name..." />
-          <button id="save-fractal-btn">Save</button>
+    <div id="database-gui" class="panel">
+      <div class="panel-header">
+        <h2>Fractals</h2>
+        <a href="javascript:void(0)" id="closeDatabaseToolbar" class="closeToolbar">×</a>
+      </div>
+      <div class="panel-body">
+        <div class="db-section">
+          <h3>Save current</h3>
+          <div class="save-row">
+            <input type="text" id="fractal-name" placeholder="Fractal name..." />
+            <button id="save-fractal-btn" class="btn btn-primary">Save</button>
+          </div>
         </div>
-        <div id="load-section">
-          <h3>Load Fractal</h3>
+        <div class="db-section">
+          <h3>Load</h3>
           <div id="fractal-list">
             <!-- Fractal list will be populated here -->
           </div>

@@ -547,8 +547,8 @@ function renderSinglePass(quick, shouldClear) {
 }
 
 function resizeCanvas() {
-  const guiWidth = document.getElementById("transform-gui").offsetWidth;
-  canvas.width = window.innerWidth - guiWidth;
+  // Panels overlay the canvas, so it always fills the window
+  canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
   gl.viewport(0, 0, canvas.width, canvas.height);

@@ -1,6 +1,7 @@
-import { createHandles, repositionHandles } from "./handles.js";
+import { recreateHandles, repositionHandles } from "./handles.js";
 import { drawScene } from "../renderer.js";
 import { transforms, transition_matrix } from "../transforms.js";
+import { refreshTransitionMatrixUI } from "./transition_matrix.js";
 
 const transformFormsContainer = document.getElementById("transform-forms");
 
@@ -74,16 +75,24 @@ function updateTransforms() {
 
 function removeTransform(form) {
   const index = parseInt(form.getAttribute("data-index"), 10);
-  form.remove();
   transforms.splice(index, 1);
-  // Update the form IDs and re-render the forms to reflect the updated indexes
-  const elements = document.getElementsByClassName("control-handle");
-  while (elements.length > 0) {
-    elements[0].remove();
-  }
+
+  // Drop the transform's row and column from the transition matrix
+  transition_matrix.splice(index, 1);
+  transition_matrix.forEach((row) => row.splice(index, 1));
+
   reRenderTransformForms();
-  createHandles();
+  recreateHandles();
+  refreshTransitionMatrixUI();
   drawScene();
+}
+
+function numberField(label, value, index, property, step) {
+  return `
+    <div class="tf-field">
+      <span>${label}</span>
+      <input type="number" step="${step}" value="${value}" data-index="${index}" data-property="${property}">
+    </div>`;
 }
 
 function createTransformForm(index) {
@@ -95,27 +104,34 @@ function createTransformForm(index) {
   form.className = "transform-form";
   form.dataset.index = index;
   form.innerHTML = `
-    <div class="form-row">
-      <label>Color <input type="color" value="${colorHex}" data-index="${index}" data-property="color"></label>
-      <label>Alpha <input type="range" min="0" max="1" step="0.01" value="${alphaValue}" data-index="${index}" data-property="color_A"></label>
+    <div class="tf-header">
+      <input type="color" value="${colorHex}" data-index="${index}" data-property="color" title="Color">
+      <label class="tf-alpha">Alpha
+        <input type="range" min="0" max="1" step="0.01" value="${alphaValue}" data-index="${index}" data-property="color_A">
+      </label>
     </div>
-    <div class="form-row">
-      <label>Origin X <input type="number" value="${transform.origin[0]}" data-index="${index}" data-property="origin_x"></label>
-      <label>Y <input type="number" value="${transform.origin[1]}" data-index="${index}" data-property="origin_y"></label>
-      <label>Z <input type="number" value="${transform.origin[2]}" data-index="${index}" data-property="origin_z"></label>
+    <div class="tf-grid">
+      <div class="tf-row">
+        <span class="tf-row-label">Origin</span>
+        ${numberField("X", transform.origin[0], index, "origin_x", 0.1)}
+        ${numberField("Y", transform.origin[1], index, "origin_y", 0.1)}
+        ${numberField("Z", transform.origin[2], index, "origin_z", 0.1)}
+      </div>
+      <div class="tf-row">
+        <span class="tf-row-label">Scale</span>
+        ${numberField("X", transform.x_scale, index, "x_scale", 0.05)}
+        ${numberField("Y", transform.y_scale, index, "y_scale", 0.05)}
+        ${numberField("Z", transform.z_scale, index, "z_scale", 0.05)}
+      </div>
+      <div class="tf-row tf-row-4">
+        <span class="tf-row-label">Rotate</span>
+        ${numberField("Deg", transform.degrees_rotation, index, "degrees_rotation", 5)}
+        ${numberField("X", transform.rotation_axis[0], index, "rotation_axis_x", 0.1)}
+        ${numberField("Y", transform.rotation_axis[1], index, "rotation_axis_y", 0.1)}
+        ${numberField("Z", transform.rotation_axis[2], index, "rotation_axis_z", 0.1)}
+      </div>
     </div>
-    <div class="form-row">
-      <label>Scale X <input type="number" value="${transform.x_scale}" data-index="${index}" data-property="x_scale"></label>
-      <label>Y <input type="number" value="${transform.y_scale}" data-index="${index}" data-property="y_scale"></label>
-      <label>Z <input type="number" value="${transform.z_scale}" data-index="${index}" data-property="z_scale"></label>
-    </div>
-    <div class="form-row">
-      <label>↺ <input type="number" value="${transform.degrees_rotation}" data-index="${index}" data-property="degrees_rotation"></label>
-      <label>X <input type="number" value="${transform.rotation_axis[0]}" data-index="${index}" data-property="rotation_axis_x"></label>
-      <label>Y <input type="number" value="${transform.rotation_axis[1]}" data-index="${index}" data-property="rotation_axis_y"></label>
-      <label>Z <input type="number" value="${transform.rotation_axis[2]}" data-index="${index}" data-property="rotation_axis_z"></label>
-    </div>
-    <button class="close-btn">X</button>
+    <button class="close-btn" title="Remove transform">×</button>
   `;
 
   // Add event listeners for inputs
@@ -125,7 +141,7 @@ function createTransformForm(index) {
 
   form
     .querySelector(".close-btn")
-    .addEventListener("click", (e) => removeTransform(form));
+    .addEventListener("click", () => removeTransform(form));
 
   transformFormsContainer.appendChild(form);
 }
@@ -142,26 +158,13 @@ function addTransform() {
   };
   transforms.push(newTransform);
 
-  // Add a new row and column of True values to the transition matrix.
-  for (let i = 0; i < transforms.length - 1; i++) {
-    transition_matrix[i].push(true);
-  }
-
-  let last_row = [];
-  for (let i = 0; i < transforms.length; i++) {
-    last_row.push(true);
-  }
-
-  transition_matrix.push(last_row);
-
-  const existingGui = document.getElementById("transition-matrix-gui");
-  if (existingGui) {
-    existingGui.remove();
-  }
+  // Add a new row and column of True values to the transition matrix
+  transition_matrix.forEach((row) => row.push(true));
+  transition_matrix.push(new Array(transforms.length).fill(true));
 
   createTransformForm(transforms.length - 1);
-
-  createHandles();
+  recreateHandles();
+  refreshTransitionMatrixUI();
   drawScene();
 }
 

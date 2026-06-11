@@ -123,6 +123,18 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let zoomLevel = 1.0;
 
+// The renderer's float64 pipeline stays pixel-accurate to about 1e12;
+// past that, cells start to wobble relative to the ideal fractal.
+const MIN_ZOOM = 0.05;
+const MAX_ZOOM = 1e12;
+
+// world units per NDC unit at zoom 1 (the ortho projection letterboxes
+// the short axis): world = ndc * scale / zoomLevel - pan
+function viewScales() {
+  const ar = canvas.width / canvas.height;
+  return ar >= 1 ? { sx: ar, sy: 1 } : { sx: 1, sy: 1 / ar };
+}
+
 // Convert mouse movement to world-space movement, accounting for perspective and zoom
 function getPanAmountForMouseMovement(dx, dy) {
   // Get the canvas dimensions for scaling
@@ -297,25 +309,21 @@ function handleMouseWheel(e) {
   // Convert mouse position to normalized device coordinates (NDC)
   const ndcX = (mouseX / canvas.width) * 2 - 1;
   const ndcY = -((mouseY / canvas.height) * 2 - 1); // Y is flipped in WebGL
-  
+  const { sx, sy } = viewScales();
+
   // Convert mouse position to world coordinates before zoom
-  const worldX = ndcX / zoomLevel - panX;
-  const worldY = ndcY / zoomLevel - panY;
-  
+  const worldX = (ndcX * sx) / zoomLevel - panX;
+  const worldY = (ndcY * sy) / zoomLevel - panY;
+
   // Determine zoom direction and amount
   const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9; // Zoom in or out
-  
+
   // Update zoom level with limits
-  const oldZoomLevel = zoomLevel;
-  zoomLevel = Math.max(0.1, Math.min(1000, zoomLevel * zoomFactor));
-  
-  // Calculate how much the world coordinates of the mouse point changed due to zooming
-  const newWorldX = ndcX / zoomLevel - panX;
-  const newWorldY = ndcY / zoomLevel - panY;
-  
+  zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * zoomFactor));
+
   // Adjust pan to keep the mouse over the same world point
-  panX += (newWorldX - worldX);
-  panY += (newWorldY - worldY);
+  panX = (ndcX * sx) / zoomLevel - worldX;
+  panY = (ndcY * sy) / zoomLevel - worldY;
   
   // Update the perspective matrix
   updatePerspectiveMatrix();
@@ -370,17 +378,18 @@ document.addEventListener(
     const rect = canvas.getBoundingClientRect();
     const ndcX = ((info.midX - rect.left) / canvas.width) * 2 - 1;
     const ndcY = -(((info.midY - rect.top) / canvas.height) * 2 - 1);
+    const { sx, sy } = viewScales();
 
     // keep the world point that started under the fingers' midpoint anchored
-    const worldX = ndcX / pinchStart.zoom - pinchStart.panX;
-    const worldY = ndcY / pinchStart.zoom - pinchStart.panY;
+    const worldX = (ndcX * sx) / pinchStart.zoom - pinchStart.panX;
+    const worldY = (ndcY * sy) / pinchStart.zoom - pinchStart.panY;
 
     zoomLevel = Math.max(
-      0.1,
-      Math.min(1000, pinchStart.zoom * (info.dist / pinchStart.dist))
+      MIN_ZOOM,
+      Math.min(MAX_ZOOM, pinchStart.zoom * (info.dist / pinchStart.dist))
     );
-    panX = ndcX / zoomLevel - worldX;
-    panY = ndcY / zoomLevel - worldY;
+    panX = (ndcX * sx) / zoomLevel - worldX;
+    panY = (ndcY * sy) / zoomLevel - worldY;
 
     updatePerspectiveMatrix();
     repositionHandles();
@@ -401,6 +410,16 @@ document.addEventListener(
   },
   { passive: false }
 );
+
+// console/test helper: jump the view to zoom z centered on world (cx, cy)
+window.setZoom = function (z, cx = 0, cy = 0) {
+  zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+  panX = -cx;
+  panY = -cy;
+  updatePerspectiveMatrix();
+  repositionHandles();
+  drawScene();
+};
 
 function to_canvas_coords(webGL_coords) {
   // Create a 4D vector from the 3D coordinates for matrix multiplication

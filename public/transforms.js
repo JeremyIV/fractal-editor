@@ -33,9 +33,10 @@ let transition_matrix = [
   [true, true, true],
   [true, true, true],
 ];
-let perspective = mat4.create();
-
-// Initialize with identity matrix for 2D mode (no rotation)
+// Plain array, not mat4.create(): gl-matrix mutates in place, so keeping
+// the storage as a JS array makes every view-state operation float64.
+// Float32 here is what used to cap zooming around 1e5.
+let perspective = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 window.transforms = transforms;
 window.transition_matrix = transition_matrix;

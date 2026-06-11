@@ -1,44 +1,39 @@
 /* =========================================================================
    buildPrefixTree.js
    -------------------------------------------------------------------------
-   Given:
-     • transforms        – Array of IFS transform descriptors
-                           (same shape as the `transforms` array you already use)
-     • transitionMatrix  – Boolean adjacency matrix [m][m] that disables or
-                           enables fᵢ→fⱼ transitions (use an all-true matrix
-                           if you want the vanilla chaos-game behaviour).
-     • viewBox           – Axis-aligned bounding box {xMin, yMin, xMax, yMax}
-                           expressed in the *same* world/eye space in which
-                           the transforms live.
-     • options           – { maxDepth:Int,  // hard recursion limit
-                             pixelTol:Float, // world-space size triggering
-                                             // terminal nodes  (≈ one pixel)
-                             rootBox:{xMin,…} // optional global bounding box;
-                                             // default is the convex hull of
-                                             // the four corners after applying
-                                             // every transform exactly once }
-   Returns:
-     A tree whose nodes are
-        { prefix: Int[],  // sequence of transform indices
-          box:    {xMin,…},
-          terminal: Boolean,
-          children: Node[] }
+   Viewport culling for the chaos game: find a set of transform prefixes
+   whose cells (prefix applied to the attractor's bounding square) cover
+   everything visible, and only what's visible.
+
+   This is a best-first subdivision instead of a fixed-depth recursion:
+   leaves sit in a priority queue scored by
+        probability-mass × how-oversized-the-cell-is
+   and the worst leaf is split until every cell is either fully inside the
+   viewport (no waste) or small relative to it (bounded waste), or the
+   leaf budget runs out. Depth is therefore unbounded (deep zooms keep
+   subdividing as far as needed — prefix lengths of 100+ are normal at
+   extreme zoom), and the budget is spent exactly where it pays.
+
+   All geometry is float64 (plain arrays); see ifs_math.js.
+
+   Each returned leaf:
+     {
+       aff       — float64 composite affine of the prefix (outermost first)
+       w         — exact probability that the chain's most recent steps
+                   spell this prefix (normalized over returned leaves)
+       inner     — innermost transform index (-1 for the empty prefix);
+                   seeds the shader's reverse-order chain sampling
+       color     — composite color of the prefix (stackColors)
+       size      — conservative cell diameter (world units)
+       R         — chain steps this cell needs (geometry + color floors)
+       quad      — cell corners (for the debug overlay)
+       depth     — prefix length
+     }
    ========================================================================= */
 
-import { getAffineTransform3D } from "./transforms.js";
+import { aff2Identity, aff2Mul, aff2Apply, aff2OpNorm, stackColors } from "./ifs_math.js";
 
-// ---------- geometry helpers ----------
-// ────────────────── geo helpers for convex quads ──────────────────
-function transformQuad(mat, basisQuad) {
-  // basisQuad is [[x0,y0], … , [x3,y3]] CCW
-  return basisQuad.map(([x,y]) => {
-    const v = vec4.fromValues(x, y, 0, 1);
-    vec4.transformMat4(v, v, mat);
-    return [v[0], v[1]];
-  });
-}
-
-// axis-aligned viewport corners (CCW)
+// ────────────────── geometry helpers (convex quads, f64) ──────────────────
 function viewCorners(vb) {
   return [
     [vb.xMin, vb.yMin],
@@ -48,13 +43,12 @@ function viewCorners(vb) {
   ];
 }
 
-// point inside convex quad (winding)
 function pointInQuad(p, quad) {
   let sign = 0;
   for (let i = 0; i < 4; ++i) {
-    const [x1,y1] = quad[i];
-    const [x2,y2] = quad[(i+1)&3];
-    const cross = (x2 - x1)*(p[1] - y1) - (y2 - y1)*(p[0] - x1);
+    const [x1, y1] = quad[i];
+    const [x2, y2] = quad[(i + 1) & 3];
+    const cross = (x2 - x1) * (p[1] - y1) - (y2 - y1) * (p[0] - x1);
     if (cross === 0) continue;
     const s = Math.sign(cross);
     if (sign === 0) sign = s;
@@ -63,190 +57,219 @@ function pointInQuad(p, quad) {
   return true;
 }
 
-// segment–segment intersect helper
-function segmentsIntersect(a,b,c,d){
-  function ccw(p,q,r){return (r[1]-p[1])*(q[0]-p[0])>(q[1]-p[1])*(r[0]-p[0]);}
-  return (ccw(a,c,d) !== ccw(b,c,d)) && (ccw(a,b,c) !== ccw(a,b,d));
+function segmentsIntersect(a, b, c, d) {
+  function ccw(p, q, r) {
+    return (r[1] - p[1]) * (q[0] - p[0]) > (q[1] - p[1]) * (r[0] - p[0]);
+  }
+  return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
 }
 
-// quad ↔ viewport intersection
-function quadIntersect(quad, vb){
+function quadIntersect(quad, vb) {
+  const xs = [quad[0][0], quad[1][0], quad[2][0], quad[3][0]];
+  const ys = [quad[0][1], quad[1][1], quad[2][1], quad[3][1]];
+  if (
+    Math.max(...xs) < vb.xMin ||
+    Math.min(...xs) > vb.xMax ||
+    Math.max(...ys) < vb.yMin ||
+    Math.min(...ys) > vb.yMax
+  )
+    return false;
+
   const vCorners = viewCorners(vb);
+  if (vCorners.some((c) => pointInQuad(c, quad))) return true;
+  if (
+    quad.some(
+      (c) => c[0] >= vb.xMin && c[0] <= vb.xMax && c[1] >= vb.yMin && c[1] <= vb.yMax
+    )
+  )
+    return true;
 
-  // quick reject by AABB of quad
-  const xs = quad.map(p=>p[0]); const ys = quad.map(p=>p[1]);
-  if (Math.max(...xs) < vb.xMin || Math.min(...xs) > vb.xMax ||
-      Math.max(...ys) < vb.yMin || Math.min(...ys) > vb.yMax) return false;
-
-  // 1) any viewport corner inside quad
-  if (vCorners.some(c=>pointInQuad(c,quad))) return true;
-
-  // 2) any quad vertex inside viewport
-  if (quad.some(c => c[0]>=vb.xMin && c[0]<=vb.xMax &&
-                     c[1]>=vb.yMin && c[1]<=vb.yMax)) return true;
-
-  // 3) edge–edge test
-  for(let i=0;i<4;i++){
-    const a=quad[i], b=quad[(i+1)&3];
-    for(let j=0;j<4;j++){
-      const c=vCorners[j], d=vCorners[(j+1)&3];
-      if (segmentsIntersect(a,b,c,d)) return true;
+  for (let i = 0; i < 4; i++) {
+    const a = quad[i],
+      b = quad[(i + 1) & 3];
+    for (let j = 0; j < 4; j++) {
+      const c = vCorners[j],
+        d = vCorners[(j + 1) & 3];
+      if (segmentsIntersect(a, b, c, d)) return true;
     }
   }
   return false;
 }
 
-// viewport fully contains quad ?
-function quadInside(quad, vb){
-  return quad.every(c => c[0]>=vb.xMin && c[0]<=vb.xMax &&
-                         c[1]>=vb.yMin && c[1]<=vb.yMax);
+function quadInside(quad, vb) {
+  return quad.every(
+    (c) => c[0] >= vb.xMin && c[0] <= vb.xMax && c[1] >= vb.yMin && c[1] <= vb.yMax
+  );
 }
 
-// ---------- main routine ----------
-export function buildPrefixTree(
-  basisQuad,             // [[x0,y0],...,[x3,y3]]  initial square
-  viewBox,
-  transforms,
-  transitionMatrix,
-  maxDepth = 8,
-  verbose   = false
-){
-  const m   = transforms.length;
-  const mats= transforms.map(getAffineTransform3D);
-
-  // Hard cap on explored nodes. Slowly-contracting transforms (scale near
-  // 1) otherwise keep every cell viewport-sized through all maxDepth
-  // levels and the tree explodes toward m^maxDepth nodes per frame. The
-  // result is truncated to a handful of prefixes anyway, so exploring
-  // thousands of nodes is wasted work.
-  let nodeBudget = 3000;
-
-  function recurse(prefix,lastIdx,depth){
-    // composite matrix (reverse order)
-    let M = mat4.create();
-    for(let k=prefix.length-1;k>=0;--k){
-      mat4.multiply(M, mats[prefix[k]], M);
-    }
-    const quad = transformQuad(M, basisQuad);
-
-    if (verbose) console.log("prefix",prefix,"quad",quad);
-
-    if (!quadIntersect(quad, viewBox)) return null;      // prune
-    nodeBudget--;
-    const terminal = depth===0 || nodeBudget<=0 || quadInside(quad,viewBox);
-
-    const node = { prefix, quad, terminal, children: new Array(m).fill(null) };
-    if (terminal) return node;
-
-    for(let i=0;i<m;++i){
-      // appending i makes it the innermost map: in time order, i is
-      // applied immediately BEFORE lastIdx, so the constraint is
-      // "lastIdx may follow i", i.e. matrix[i][lastIdx]
-      if (lastIdx>=0 && !transitionMatrix[i][lastIdx]) continue;
-      const child = recurse([...prefix,i], i, depth-1);
-      if (child) node.children[i]=child;
-    }
-    if (node.children.every(c=>c===null)) return null;
-    if (node.children.every(c=>c && c.terminal)){
-      node.terminal=true; node.children=[];
-    }
-    return node;
+// ────────────────── tiny binary max-heap on .priority ──────────────────
+class MaxHeap {
+  constructor() {
+    this.a = [];
   }
-  return recurse([], -1, maxDepth);
-}
-
-/**
- * truncatePrefixTree
- * ------------------
- * Mutates `root` so that the *total* number of terminal nodes
- * does not exceed `maxPrefixes`.  Works by repeatedly finding the
- * internal node whose collapse removes the most leaves.
- *
- * @param {Node|null} root
- * @param {number}    maxPrefixes   (must be ≥ 0)
- * @return {Node|null}              the same root (possibly trimmed)
- */
-export function truncatePrefixTree(root, maxPrefixes) {
-  if (!root) return null;
-
-  // Degenerate limits
-  if (maxPrefixes <= 0) {
-    root.terminal = true;
-    root.children = Array(root.children.length).fill(null);
-    return root;
+  get size() {
+    return this.a.length;
   }
-
-  /* -----------------------------------------------------------
-     Helper 1: analyse(node)
-       * returns the number of terminal leaves in `node`’s subtree
-       * also returns the internal node which – if collapsed –
-         would remove the **largest** number of leaves
-  ----------------------------------------------------------- */
-  function analyse(node) {
-    // leaf → one terminal, nothing collapsible
-    if (!node || node.terminal) {
-      return { leaves: 1, bestNode: null, bestGain: 0 };
+  push(n) {
+    const a = this.a;
+    a.push(n);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (a[p].priority >= a[i].priority) break;
+      [a[p], a[i]] = [a[i], a[p]];
+      i = p;
     }
-
-    let leaves   = 0;
-    let bestNode = null;
-    let bestGain = 0;
-
-    for (const child of node.children) {
-      if (!child) continue;
-
-      const r = analyse(child);
-      leaves += r.leaves;
-
-      // bubble up the best candidate found in this branch
-      if (r.bestGain > bestGain) {
-        bestGain = r.bestGain;
-        bestNode = r.bestNode;
+  }
+  pop() {
+    const a = this.a;
+    const top = a[0];
+    const last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1,
+          r = l + 1;
+        let m = i;
+        if (l < a.length && a[l].priority > a[m].priority) m = l;
+        if (r < a.length && a[r].priority > a[m].priority) m = r;
+        if (m === i) break;
+        [a[i], a[m]] = [a[m], a[i]];
+        i = m;
       }
     }
-
-    // Collapsing *this* node would remove (leaves-1) terminals
-    const myGain = leaves - 1;
-    if (myGain > bestGain) {
-      bestGain = myGain;
-      bestNode = node;
-    }
-
-    return { leaves, bestNode, bestGain };
+    return top;
   }
-
-  /* -----------------------------------------------------------
-     Helper 2: collapse(node)
-       Converts an internal node into a terminal leaf and returns
-       how many terminals were removed in the process.
-  ----------------------------------------------------------- */
-  function collapse(node) {
-    if (!node || node.terminal) return 0;
-
-    // How many leaves are in this subtree?
-    const { leaves } = analyse(node);
-    const removed    = leaves - 1;       // new leaf replaces old leaves
-
-    node.terminal  = true;
-    node.children  = Array(node.children.length).fill(null);
-
-    return removed;
+  peek() {
+    return this.a[0];
   }
-
-  /* -----------------------------------------------------------
-     Main loop: keep collapsing until we are within the budget
-  ----------------------------------------------------------- */
-  while (true) {
-    const { leaves, bestNode } = analyse(root);
-    if (leaves <= maxPrefixes || !bestNode) break; // finished
-
-    collapse(bestNode); // removes the largest block of leaves
-  }
-
-  return root;
 }
 
+// ────────────────── main routine ──────────────────
+export function buildPrefixLeaves({
+  rootQuad, // invariant square corners (attractorBound().quad)
+  viewBox, // {xMin, yMin, xMax, yMax} world space
+  affs, // float64 2D affines of the maps
+  colors, // per-map RGBA
+  kernel, // buildKernel() result (rows of step probabilities)
+  leafBudget, // max number of leaves
+  pixelWorld, // world-space size of one pixel
+  maxLen = 250, // hard prefix-length cap (also bounds f64 underflow)
+}) {
+  const m = affs.length;
+  const rows = kernel.rows;
+  const opNorms = affs.map(aff2OpNorm);
 
-// make life easy in the console
-window.buildPrefixTree = buildPrefixTree;
-window.truncatePrefixTree = truncatePrefixTree;
+  const viewSize = Math.max(viewBox.xMax - viewBox.xMin, viewBox.yMax - viewBox.yMin);
+
+  // Chain steps shrink detail by at most sMax per step. A cell of size s
+  // needs R with s * sMax^R <= pixel; R is capped at 64 in the shader, so
+  // cells must shrink below insideTarget for the chain to reach pixel
+  // scale. Boundary cells additionally shrink to a fraction of the view
+  // so the off-screen part of their cells (= wasted points) stays small.
+  const sMax = Math.min(Math.max(Math.max(...opNorms, 0.05), 0.05), 0.97);
+  const logS = Math.log(sMax);
+  const R_HEADROOM = 48; // leave slack below the shader's 64 cap
+  const insideTarget = pixelWorld / Math.exp(R_HEADROOM * logS);
+  const boundaryTarget = Math.min(viewSize / 8, insideTarget);
+
+  // Color blending converges as Π(1-α); keep enough steps that the
+  // truncated tail is under ~0.5% so low-alpha looks don't shift.
+  let aMin = 1;
+  colors.forEach((c) => (aMin = Math.min(aMin, c[3])));
+  const rColor = Math.max(4, Math.min(64, Math.ceil(5.3 / Math.max(aMin, 0.083))));
+
+  const rootSize = Math.max(
+    rootQuad[2][0] - rootQuad[0][0],
+    rootQuad[2][1] - rootQuad[0][1]
+  );
+
+  const root = {
+    aff: aff2Identity(),
+    w: 1,
+    inner: -1,
+    color: [0, 0, 0, 0],
+    size: rootSize,
+    depth: 0,
+    quad: rootQuad,
+    inside: quadInside(rootQuad, viewBox),
+  };
+  if (!root.inside && !quadIntersect(rootQuad, viewBox)) return [];
+
+  const target = (n) => (n.inside ? insideTarget : boundaryTarget);
+  const oversize = (n) => n.size / target(n);
+  const setPriority = (n) => {
+    n.priority = n.w * Math.min(oversize(n), 1e30);
+  };
+  setPriority(root);
+
+  const heap = new MaxHeap();
+  heap.push(root);
+  const done = [];
+  let pops = 0;
+  const maxPops = leafBudget * 6;
+
+  while (heap.size > 0 && heap.size + done.length < leafBudget && pops < maxPops) {
+    const top = heap.peek();
+    if (oversize(top) <= 1) break; // largest remaining cell is fine → all are
+    heap.pop();
+    pops++;
+
+    if (top.depth >= maxLen) {
+      done.push(top);
+      continue;
+    }
+
+    const stepRow = rows[top.inner + 1];
+    for (let j = 0; j < m; j++) {
+      const p = stepRow[j];
+      if (p <= 0) continue; // not an allowed predecessor / zero measure
+      const aff = aff2Mul(top.aff, affs[j]);
+      const child = {
+        aff,
+        w: top.w * p,
+        inner: j,
+        color: stackColors(colors[j], top.color),
+        size: top.size * opNorms[j],
+        depth: top.depth + 1,
+        quad: null,
+        inside: top.inside,
+      };
+      if (!top.inside) {
+        // rootQuad is invariant (T_j(B) ⊆ B), so children of an inside
+        // cell are inside automatically; only boundary cells get tested
+        child.quad = rootQuad.map(([x, y]) => aff2Apply(aff, x, y));
+        if (!quadIntersect(child.quad, viewBox)) continue; // culled
+        child.inside = quadInside(child.quad, viewBox);
+      }
+      setPriority(child);
+      heap.push(child);
+    }
+    // if every child was culled the parent's mass simply drops out;
+    // normalization below re-distributes it (same as the old pruning)
+  }
+
+  const leaves = done.concat(heap.a);
+  if (leaves.length === 0) return [];
+
+  let totalW = 0;
+  leaves.forEach((n) => (totalW += n.w));
+  if (totalW <= 0) return [];
+
+  for (const n of leaves) {
+    n.w /= totalW;
+    if (!n.quad) n.quad = rootQuad.map(([x, y]) => aff2Apply(n.aff, x, y));
+    // chain steps needed to take this cell down to pixel scale
+    const need =
+      n.size <= pixelWorld
+        ? 0
+        : Math.ceil(Math.log(pixelWorld / n.size) / logS);
+    n.R = Math.max(rColor, Math.min(64, Math.max(4, need)));
+  }
+
+  return leaves;
+}
+
+// console debugging
+window.buildPrefixLeaves = buildPrefixLeaves;

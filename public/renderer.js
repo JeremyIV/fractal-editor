@@ -1,35 +1,41 @@
-import { transforms, transition_matrix, perspective, getAffineTransform3D } from "./transforms.js";
+import { transforms, transition_matrix, perspective } from "./transforms.js";
 import { vertexShaderSource, fragmentShaderSource } from "./shaders.js";
-import { buildPrefixTree, truncatePrefixTree } from "./buildPrefixTree.js";
-import { getCumulativeMarkovMatrix } from "./markov.js";
+import { buildPrefixLeaves } from "./buildPrefixTree.js";
+import {
+  mapAffines,
+  attractorBound,
+  buildKernel,
+  similarityDimension,
+} from "./ifs_math.js";
 
-// touch devices get a smaller point budget so interaction stays smooth
+// touch devices start with a smaller point budget so interaction stays
+// smooth; progressive rendering then adapts to the actual GPU (below)
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches;
-let MAX_POINTS = IS_TOUCH ? 300_000 : 1_000_000;
-let QUICK_MAX_POINTS = IS_TOUCH ? 60_000 : 100_000;
-// stop progressive refinement once the image has converged, instead of
-// rendering forever -- keeps mobile GPUs cool and batteries alive
-const MAX_PASSES = IS_TOUCH ? 100 : 250;
-const MAX_PFX = 32;                       // keep small for WebGL uniform limits
+const MIN_PASS_POINTS = 96_000;
+const MAX_PASS_POINTS = 4_194_304; // 2^22: keeps (id,pass) seed packing unique
+let passPoints = IS_TOUCH ? 300_000 : 1_000_000;
+let luminousPassPoints = passPoints; // frozen per progressive run so the
+// running-mean normalization stays exact
+const QUICK_MAX_POINTS = IS_TOUCH ? 60_000 : 100_000;
 
-let POINT_SIZE = 1.0
-let QUICK_POINT_SIZE = Math.sqrt(MAX_POINTS / QUICK_MAX_POINTS)
+// pass caps must stay under 512 (seed packing); the point budget is the
+// real limit -- it stops refinement once enough samples have been drawn
+const OPAQUE_MAX_PASSES = IS_TOUCH ? 120 : 400;
+const LUMINOUS_MAX_PASSES = IS_TOUCH ? 100 : 250;
+const POINT_BUDGET = IS_TOUCH ? 60e6 : 800e6;
+
+// culling granularity: how many prefix cells the view gets subdivided into
+const LEAF_BUDGET_FULL = IS_TOUCH ? 320 : 640;
+const LEAF_BUDGET_QUICK = IS_TOUCH ? 96 : 128;
+const TEX_W = 2048; // prefix texture width; holds up to 1024 prefixes
+
+const POINT_SIZE = 1.0;
+const QUICK_POINT_SIZE = Math.sqrt(
+  (IS_TOUCH ? 300_000 : 1_000_000) / QUICK_MAX_POINTS
+);
 
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl2", { depth: true, preserveDrawingBuffer: true });
-const SPHERE_RADIUS = 0.005;
-const QUICK_SPHERE_RADIUS = Math.sqrt(
-  (SPHERE_RADIUS * SPHERE_RADIUS * MAX_POINTS) / QUICK_MAX_POINTS
-);
-// World-space box that certainly encloses the entire attractor.
-// Pick tighter numbers if you know them.
-const ROOT_BOX = { xMin: -1, yMin: -1, xMax: 1, yMax: 1 };
-const ROOT_QUAD = [
-  [ROOT_BOX.xMin, ROOT_BOX.yMin],
-  [ROOT_BOX.xMax, ROOT_BOX.yMin],
-  [ROOT_BOX.xMax, ROOT_BOX.yMax],
-  [ROOT_BOX.xMin, ROOT_BOX.yMax],
-];
 
 if (!gl) {
   alert("WebGL 2.0 not supported");
@@ -39,97 +45,103 @@ if (!gl) {
 // OPAQUE FRAGMENTS
 gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL);
-gl.clearDepth(1.0); // Clear everything
-
-gl.clearColor(0.0, 0.0, 0.0, 1.0); // Clear to black, fully opaque
+gl.clearDepth(1.0);
+gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
 /////////////////////////
 // WEBGL INITIALIZATION
 /////////////////////////
 // ──────────────────────────────────
-//  Bounding-box line shaders
+//  Bounding-box line shaders (debug overlay, NDC space)
 // ──────────────────────────────────
 const bboxVertexShaderSource = `#version 300 es
 precision mediump float;
 in vec2 aPosition;
-uniform mat4 uProjectionMatrix;
 void main () {
-    gl_Position = uProjectionMatrix * vec4(aPosition, 0.0, 1.0);
+    gl_Position = vec4(aPosition, 0.0, 1.0);
 }`;
 const bboxFragmentShaderSource = `#version 300 es
 precision mediump float;
 uniform vec4 uColor;
 out vec4 fragColor;
 void main () { fragColor = uColor; }`;
-// ───── bbox programme + VBOs ─────
 const bboxProg = createProgram(
   gl,
-  createShader(gl, gl.VERTEX_SHADER,   bboxVertexShaderSource),
+  createShader(gl, gl.VERTEX_SHADER, bboxVertexShaderSource),
   createShader(gl, gl.FRAGMENT_SHADER, bboxFragmentShaderSource)
 );
-const bboxPosLoc   = gl.getAttribLocation(bboxProg, "aPosition");
-const bboxProjLoc  = gl.getUniformLocation(bboxProg, "uProjectionMatrix");
+const bboxPosLoc = gl.getAttribLocation(bboxProg, "aPosition");
 const bboxColorLoc = gl.getUniformLocation(bboxProg, "uColor");
 
-// one buffer for the view window, one for the prefix tree
-const viewBoxVBO   = gl.createBuffer();
-let   viewBoxVerts = 0;
+const viewBoxVBO = gl.createBuffer();
+let viewBoxVerts = 0;
+const treeBoxVBO = gl.createBuffer();
+let treeBoxVerts = 0;
 
-const treeBoxVBO   = gl.createBuffer();
-let   treeBoxVerts = 0;
 // ───── overlay toggle state ─────
-let overlayEnabled = false;  // off by default
-let currentViewBox = null;   // {xMin,yMin,xMax,yMax} - auto-calculated
+let overlayEnabled = false;
+let currentViewBox = null;
+window.toggleOverlay = () => (overlayEnabled = !overlayEnabled);
+window.enableOverlay = () => (overlayEnabled = true);
+window.disableOverlay = () => (overlayEnabled = false);
 
-// console helpers for overlay toggle
-function toggleOverlay() { overlayEnabled = !overlayEnabled; }
-function enableOverlay() { overlayEnabled = true; }
-function disableOverlay() { overlayEnabled = false; }
-window.toggleOverlay = toggleOverlay;
-window.enableOverlay = enableOverlay;
-window.disableOverlay = disableOverlay;
-
-// helper to compute current viewBox from projection matrix
-function computeViewBox(projMatrix) {
-  const inv = mat4.invert(mat4.create(), projMatrix);
-  const ndcCorners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
-  const worldCorners = ndcCorners.map(([x, y]) => {
-    const v = vec4.transformMat4(vec4.create(), vec4.fromValues(x, y, 0, 1), inv);
-    return [v[0] / v[3], v[1] / v[3]];
-  });
-  const xs = worldCorners.map(p => p[0]);
-  const ys = worldCorners.map(p => p[1]);
-  return {
-    xMin: Math.min(...xs),
-    yMin: Math.min(...ys),
-    xMax: Math.max(...xs),
-    yMax: Math.max(...ys)
-  };
-}
-
-
-const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource);
-const fragmentShader = createShader(
+// ──────────────────────────────────
+//  Chaos-game point program
+// ──────────────────────────────────
+const program = createProgram(
   gl,
-  gl.FRAGMENT_SHADER,
-  fragmentShaderSource
+  createShader(gl, gl.VERTEX_SHADER, vertexShaderSource),
+  createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource)
 );
-const program = createProgram(gl, vertexShader, fragmentShader);
+const loc = {
+  prefixTex: gl.getUniformLocation(program, "uPrefixTex"),
+  numPrefixes: gl.getUniformLocation(program, "uNumPrefixes"),
+  pass: gl.getUniformLocation(program, "uPass"),
+  pointSize: gl.getUniformLocation(program, "uPointSize"),
+  numMaps: gl.getUniformLocation(program, "uNumMaps"),
+  mapsAff: gl.getUniformLocation(program, "uMapsAff"),
+  colors: gl.getUniformLocation(program, "uColors"),
+  alias: gl.getUniformLocation(program, "uAlias"),
+};
 
-const positionBuffer = gl.createBuffer();
-const indexBuffer = gl.createBuffer();
+// the point shader has no vertex attributes (everything derives from
+// gl_VertexID), same pattern as the fullscreen passes below
+const vao = gl.createVertexArray();
 
-let bufferedNumPoints = 0;
+// per-prefix data texture: rows 0-1 matrices/colors, row 2 cumulative
+// point-allocation starts (re-uploaded every pass)
+const prefixTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, prefixTex);
+gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, TEX_W, 3);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.bindTexture(gl.TEXTURE_2D, null);
 
-let projectionMatrix = mat4.create();
+const prefixTexels = new Float32Array(TEX_W * 2 * 4);
+const cumTexels = new Float32Array(1024 * 4);
+const mapsAffBuf = new Float32Array(20 * 4);
+const colorsBuf = new Float32Array(10 * 4);
 
-// VAO will be created after program is ready
-let vao = null;
+// scene state produced by updateScene()
+const scene = {
+  count: 0,
+  wLum: [], // exact chain-statistics weights (luminous correctness)
+  wOpq: [], // pixel-footprint weights (opaque fill speed)
+  leaves: [],
+};
+// view scalars for composing matrices / projecting overlay (all f64)
+const vs = { ox: 1, oy: 1, zoom: 1, panX: 0, panY: 0 };
 
-// Progressive rendering state
+let projectionMatrix = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const orthoTmp = new Array(16);
+
 let isProgressiveMode = false;
 let currentPassCount = 0;
 let progressiveAnimationId = null;
+let totalPointsDrawn = 0;
+let vsyncEst = 30; // running estimate of the display's frame interval (ms)
 
 // ──────────────────────────────────
 //  Luminous (additive) rendering
@@ -258,41 +270,22 @@ function getRenderMode() {
   return renderMode;
 }
 
-
-
-// Helper to safely set uniforms
-function setUniform1f(name, value) {
-  const loc = gl.getUniformLocation(program, name);
-  if (loc !== null) {
-    gl.uniform1f(loc, value);
-  }
-}
-
 function drawScene(quick, first_pass) {
-  // Cancel any existing progressive rendering
   if (progressiveAnimationId !== null) {
     cancelAnimationFrame(progressiveAnimationId);
     progressiveAnimationId = null;
   }
-  // always update prefix tree for frustum culling
-  const tree = updatePrefixTree(projectionMatrix);
-  
-  // only rebuild overlay buffers if overlay is enabled
-  rebuildOverlayBuffers(tree);
 
+  updateScene(quick === true);
 
-  // Determine rendering mode
   if (quick === true) {
-    // Quick mode: single render with quick settings
     isProgressiveMode = false;
     currentPassCount = 0;
     renderSinglePass(true, true);
   } else if (first_pass === false) {
-    // Explicit non-clearing single render
     isProgressiveMode = false;
     renderSinglePass(false, false);
   } else {
-    // Progressive mode: start continuous rendering
     isProgressiveMode = true;
     currentPassCount = 0;
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -302,11 +295,53 @@ function drawScene(quick, first_pass) {
 }
 
 function startProgressiveRendering() {
+  const luminous = renderMode === "luminous" && luminousSupported;
+  luminousPassPoints = passPoints;
+  totalPointsDrawn = 0;
+  const maxPasses = luminous ? LUMINOUS_MAX_PASSES : OPAQUE_MAX_PASSES;
+  let lastT = performance.now();
+  let frameAcc = 0;
+  let frameCnt = 0;
+
   function animate() {
     renderSinglePass(false, false);
     currentPassCount++;
 
-    if (isProgressiveMode && currentPassCount < MAX_PASSES) {
+    // Adapt opaque pass size to the GPU by hill-climbing against the
+    // display's vsync interval: rAF deltas sit at one vsync while the
+    // GPU keeps up and jump to multiples when it falls behind, so grow
+    // until frames start missing vsync, then back off. (Luminous keeps
+    // a fixed size per run so the running-mean normalization is exact.)
+    const now = performance.now();
+    const dt = now - lastT;
+    lastT = now;
+    if (!luminous && currentPassCount > 12 && dt < 250) {
+      // frame interval floor: ignore sub-6ms anomalies (double-fired rAF)
+      if (dt >= 6) vsyncEst = Math.min(vsyncEst, Math.max(dt, 7));
+      frameAcc += dt;
+      frameCnt++;
+      if (frameCnt >= 8) {
+        const avg = frameAcc / frameCnt;
+        frameAcc = 0;
+        frameCnt = 0;
+        if (avg > 2.1 * vsyncEst && passPoints > MIN_PASS_POINTS) {
+          passPoints = Math.max(MIN_PASS_POINTS, Math.round(passPoints / 1.5));
+        } else if (avg < 1.35 * vsyncEst && passPoints < MAX_PASS_POINTS) {
+          passPoints = Math.min(MAX_PASS_POINTS, Math.round(passPoints * 1.35));
+        }
+        window.renderStats = Object.assign(window.renderStats || {}, {
+          passPointsTarget: passPoints,
+          vsyncEst,
+          lastAvgDt: avg,
+        });
+      }
+    }
+
+    if (
+      isProgressiveMode &&
+      currentPassCount < maxPasses &&
+      totalPointsDrawn < POINT_BUDGET
+    ) {
       progressiveAnimationId = requestAnimationFrame(animate);
     } else {
       progressiveAnimationId = null;
@@ -316,350 +351,238 @@ function startProgressiveRendering() {
   animate();
 }
 
-window.tree = null;
+/* ──────────────────────────────────────────────────────────────────────
+   Scene update: float64 projection + culling + uniform/texture upload.
+   Runs once per drawScene (i.e., whenever the view or the fractal
+   changes), not per progressive pass.
+   ────────────────────────────────────────────────────────────────────── */
+function updateScene(quick) {
+  const t0 = performance.now();
+  const ar = canvas.width / canvas.height;
+  vs.ox = ar >= 1 ? 1 / ar : 1;
+  vs.oy = ar >= 1 ? 1 : ar;
+  // handles.js builds `perspective` as scale(zoom)∘translate(pan), and
+  // it's a plain (float64) array, so the view state reads back exactly
+  vs.zoom = perspective[0] || 1;
+  vs.panX = perspective[12] / vs.zoom;
+  vs.panY = perspective[13] / (perspective[5] || 1);
 
-function refreshTransformMatrices() {
-  for (let i = 0; i < transforms.length; ++i) {
-    transforms[i]._matrix = getAffineTransform3D(transforms[i]);
+  // exported picking matrix for handles.js (mutated in place)
+  if (ar >= 1) {
+    mat4.ortho(orthoTmp, -ar, ar, -1, 1, -1, 1);
+  } else {
+    mat4.ortho(orthoTmp, -1, 1, -1 / ar, 1 / ar, -1, 1);
   }
-}
+  mat4.multiply(projectionMatrix, orthoTmp, perspective);
 
-/**
- * Composite c2 over c1 (arrays [r, g, b, a], each 0-1).
- * Returns a new [r, g, b, a] array.
- */
-function stackColors(c1, c2) {
-  const [r1, g1, b1, a1] = c1;
-  const [r2, g2, b2, a2] = c2;
-
-  // Resulting alpha
-  const a3 = a2 + a1 * (1 - a2);
-
-  // Avoid division when completely transparent
-  if (a3 === 0) return [0, 0, 0, 0];
-
-  // Premultiplied approach
-  const r3 = (r2 * a2 + r1 * a1 * (1 - a2)) / a3;
-  const g3 = (g2 * a2 + g1 * a1 * (1 - a2)) / a3;
-  const b3 = (b2 * a2 + b1 * a1 * (1 - a2)) / a3;
-
-  return [r3, g3, b3, a3];
-}
-
-
-window.currentViewBox = null;
-// Function that always runs - handles prefix tree generation and uniform upload
-function updatePrefixTree(projMatrix) {
-  // auto-calculate viewBox from projection matrix
-  currentViewBox = computeViewBox(projMatrix);
+  const halfX = 1 / (vs.ox * vs.zoom);
+  const halfY = 1 / (vs.oy * vs.zoom);
+  currentViewBox = {
+    xMin: -vs.panX - halfX,
+    xMax: -vs.panX + halfX,
+    yMin: -vs.panY - halfY,
+    yMax: -vs.panY + halfY,
+  };
   window.currentViewBox = currentViewBox;
+  const pixelWorld = (2 * halfX) / canvas.width;
 
-  // build prefix tree for frustum culling (always happens)
-  const tree = buildPrefixTree(
-    ROOT_QUAD,                // full-fractal box
-    currentViewBox,          // viewport box
-    transforms,
-    transition_matrix,
-    10                       // maxDepth
-  );
-  truncatePrefixTree(tree, MAX_PFX)
-  window.tree = tree;
-
-  if (!tree) {
-    // viewport misses the fractal: upload one "identity" prefix
-    gl.useProgram(program);
-    gl.uniform1i  (gl.getUniformLocation(program,"uNumPrefixes"), 1);
-    gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"),   [1.0]);
-    gl.uniform1iv(gl.getUniformLocation(program,"uPrefixInner"), new Int32Array([-1]));
-
-    const I = mat4.create();                         // identity mat4
-    const arr = new Float32Array(16);  // 4×4 → 16
-    arr.set(I);
-    gl.uniformMatrix4fv(
-      gl.getUniformLocation(program,"uPrefixMatrices"),
-      false,
-      arr
-    );
-    return tree;
+  const m = transforms.length;
+  if (m === 0) {
+    scene.count = 0;
+    return;
   }
 
-  // gather terminal prefixes
-  const terminals = [];
-  (function collect(node) {
-    if (node.terminal) { terminals.push(node); return; }
-    node.children.forEach(c => { if (c) collect(c); });
-  })(tree);
+  const affs = mapAffines(transforms);
+  const colors = transforms.map((t) => t.color);
+  const kernel = buildKernel(transforms, transition_matrix);
+  const bound = attractorBound(affs);
 
-  if (terminals.length > MAX_PFX) {
-    console.warn(`Prefix tree truncation left ${terminals.length} terminals (max ${MAX_PFX}); slicing`);
-  }
-
-  // safety guard
-  const use = terminals.slice(0, MAX_PFX);
-
-  // build composite matrices (reverse-order product)
-  refreshTransformMatrices();
-  function compositeMatrix(prefix) {
-    let M = mat4.create();                  // identity
-    let C = [0,0,0,0];
-    for (let k = prefix.length - 1; k >= 0; --k) {
-      mat4.multiply(M, transforms[prefix[k]]._matrix, M);
-      C = stackColors(C, transforms[prefix[k]].color);
-    }
-    return M;
-  }  
-  const mats = use.map(n => compositeMatrix(n.prefix));
-
-  function compositeColor(prefix) {
-    let C = [0,0,0,0];
-    for (let k = prefix.length - 1; k >= 0; --k) {
-      C = stackColors(C, transforms[prefix[k]].color);
-    }
-    return C;
-  }  
-  const colors = use.map(n => compositeColor(n.prefix));
-
-  // optional importance weights (prod |det| is common)
-  const weights = use.map(n => {
-    let w = 1.0;
-    n.prefix.forEach(i => {
-      const t = transforms[i];
-      w *= Math.abs(t.x_scale * t.y_scale * t.z_scale);
-    });
-    return w;
+  let leaves = buildPrefixLeaves({
+    rootQuad: bound.quad,
+    viewBox: currentViewBox,
+    affs,
+    colors,
+    kernel,
+    leafBudget: quick ? LEAF_BUDGET_QUICK : LEAF_BUDGET_FULL,
+    pixelWorld,
   });
-  const totalW = weights.reduce((a,b)=>a+b,0);
-  const cdf    = weights.map((w,i)=>weights.slice(0,i+1).reduce((a,b)=>a+b,0)/totalW);
+  if (leaves.length === 0) {
+    // viewport misses the attractor entirely: draw it all through the
+    // identity prefix (every point lands off-screen, which is correct)
+    leaves = [
+      {
+        aff: [1, 0, 0, 0, 1, 0],
+        w: 1,
+        inner: -1,
+        color: [0, 0, 0, 0],
+        size: 2 * bound.r,
+        R: 64,
+        quad: bound.quad,
+        depth: 0,
+      },
+    ];
+  }
 
-  // upload uniforms
+  // ── upload per-prefix texture rows (projected matrix, R, inner, color)
+  const n = leaves.length;
+  prefixTexels.fill(0);
+  for (let p = 0; p < n; p++) {
+    const L = leaves[p];
+    const A = L.aff;
+    // F = projection ∘ prefix, composed in f64 with the translation
+    // gathered before scaling: zoom * (t + pan) keeps full precision
+    // at extreme zoom instead of cancelling two huge numbers
+    const o = ((p >> 9) * TEX_W + (p & 511) * 4) * 4;
+    prefixTexels[o + 0] = vs.ox * vs.zoom * A[0];
+    prefixTexels[o + 1] = vs.ox * vs.zoom * A[1];
+    prefixTexels[o + 2] = vs.ox * vs.zoom * (A[2] + vs.panX);
+    prefixTexels[o + 3] = quick ? Math.min(L.R, 24) : L.R;
+    prefixTexels[o + 4] = vs.oy * vs.zoom * A[3];
+    prefixTexels[o + 5] = vs.oy * vs.zoom * A[4];
+    prefixTexels[o + 6] = vs.oy * vs.zoom * (A[5] + vs.panY);
+    prefixTexels[o + 7] = L.inner + 1;
+    prefixTexels[o + 8] = L.color[0];
+    prefixTexels[o + 9] = L.color[1];
+    prefixTexels[o + 10] = L.color[2];
+    prefixTexels[o + 11] = L.color[3];
+  }
+  gl.bindTexture(gl.TEXTURE_2D, prefixTex);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEX_W, 2, gl.RGBA, gl.FLOAT, prefixTexels);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+
+  // ── point-allocation weights
+  scene.count = n;
+  scene.leaves = leaves;
+  scene.wLum = leaves.map((l) => l.w);
+
+  // opaque mode fills pixels rather than sampling measure: weight each
+  // cell by its on-screen footprint (visible extent ^ fractal dimension)
+  const dim = similarityDimension(affs);
+  const vb = currentViewBox;
+  let wSum = 0;
+  const wOpq = leaves.map((L) => {
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const [x, y] of L.quad) {
+      xMin = Math.min(xMin, x); xMax = Math.max(xMax, x);
+      yMin = Math.min(yMin, y); yMax = Math.max(yMax, y);
+    }
+    const w = Math.max(0, Math.min(xMax, vb.xMax) - Math.max(xMin, vb.xMin));
+    const h = Math.max(0, Math.min(yMax, vb.yMax) - Math.max(yMin, vb.yMin));
+    const eff = Math.max(Math.sqrt(w * h), pixelWorld);
+    return Math.pow(eff, dim);
+  });
+  wOpq.forEach((w) => (wSum += w));
+  scene.wOpq = wSum > 0 ? wOpq.map((w) => w / wSum) : leaves.map(() => 1 / n);
+
+  // ── per-scene uniforms
   gl.useProgram(program);
-  gl.uniform1i(gl.getUniformLocation(program,"uNumPrefixes"), use.length);
-  gl.uniform1fv(gl.getUniformLocation(program,"uPrefixCDF"), cdf);
-
-  // innermost transform of each prefix: seeds the shader's reverse-order
-  // chain so the chain→prefix junction respects the transition matrix
-  const inner = new Int32Array(
-    use.map((n) => (n.prefix.length ? n.prefix[n.prefix.length - 1] : -1))
-  );
-  gl.uniform1iv(gl.getUniformLocation(program, "uPrefixInner"), inner);
-  const pfxMatLoc = gl.getUniformLocation(program, "uPrefixMatrices[0]");
-
-  const flat = new Float32Array(mats.length * 16);   // 16 = 4×4
-  for (let i = 0; i < mats.length; ++i) {
-    flat.set(mats[i], i * 16);      // copy each mat4
+  gl.uniform1i(loc.numPrefixes, n);
+  gl.uniform1f(loc.numMaps, m);
+  mapsAffBuf.fill(0);
+  colorsBuf.fill(0);
+  for (let i = 0; i < 10; i++) {
+    const A = i < m ? affs[i] : [1, 0, 0, 0, 1, 0];
+    mapsAffBuf.set([A[0], A[1], A[2], 0, A[3], A[4], A[5], 0], i * 8);
+    colorsBuf.set(i < m ? colors[i] : [1, 1, 1, 1], i * 4);
   }
-  gl.uniformMatrix4fv(pfxMatLoc, false, flat);
-  
-  // load the colors into uniform vec4 uPrefixColors[MAX_PFX]
-  const flatColors = new Float32Array(colors.length * 4);
-  for (let i = 0; i < colors.length; ++i) {
-    flatColors.set(colors[i], i * 4);
-  }
-  const pfxColLoc = gl.getUniformLocation(program, "uPrefixColors[0]");
-  gl.uniform4fv(pfxColLoc, flatColors);
-  
-  return tree;
+  gl.uniform4fv(loc.mapsAff, mapsAffBuf);
+  gl.uniform4fv(loc.colors, colorsBuf);
+  gl.uniform4fv(loc.alias, kernel.aliasPacked);
+
+  // debug + perf introspection
+  window.prefixLeaves = leaves;
+  window.__ifs = { affs, kernel, bound, viewBox: currentViewBox, pixelWorld };
+  const viewSize = Math.max(2 * halfX, 2 * halfY);
+  window.renderStats = Object.assign(window.renderStats || {}, {
+    leaves: n,
+    treeMs: performance.now() - t0,
+    maxCellOverView: Math.max(...leaves.map((l) => l.size)) / viewSize,
+    maxDepth: Math.max(...leaves.map((l) => l.depth)),
+    maxR: Math.max(...leaves.map((l) => l.R)),
+    zoom: vs.zoom,
+  });
+
+  rebuildOverlayBuffers(leaves);
 }
 
-// Function that only runs when overlay is enabled - handles visual overlay buffers
-function rebuildOverlayBuffers(tree) {
+function worldToNdc(x, y) {
+  return [vs.ox * vs.zoom * (x + vs.panX), vs.oy * vs.zoom * (y + vs.panY)];
+}
+
+// Debug overlay buffers (NDC space, so they stay exact at deep zoom)
+function rebuildOverlayBuffers(leaves) {
   if (!overlayEnabled || !currentViewBox) {
     viewBoxVerts = treeBoxVerts = 0;
     return;
   }
 
-  // ── (a) rebuild view-window VBO (yellow) ──
-  const b = currentViewBox;
+  // (a) view window: the NDC unit square
+  const e = 0.998;
   const viewVertices = new Float32Array([
-    b.xMin, b.yMin,  b.xMax, b.yMin,  // bottom
-    b.xMax, b.yMin,  b.xMax, b.yMax,  // right
-    b.xMax, b.yMax,  b.xMin, b.yMax,  // top
-    b.xMin, b.yMax,  b.xMin, b.yMin   // left
+    -e, -e, e, -e, e, -e, e, e, e, e, -e, e, -e, e, -e, -e,
   ]);
-  viewBoxVerts = 8; // 8 coords = 4 independent segments
+  viewBoxVerts = 8;
   gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
   gl.bufferData(gl.ARRAY_BUFFER, viewVertices, gl.STATIC_DRAW);
 
-  // ── (b) rebuild prefix-tree VBO (cyan) ──
-  if (!tree) {
-    treeBoxVerts = 0;   // clear overlay VBO so it draws nothing
-    gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(), gl.STATIC_DRAW);
-    return;
-  }
-
+  // (b) leaf cells
   const verts = [];
-  (function collect(node) {
-  const q = node.quad;      // [[x0,y0]..]
-  verts.push(
-    q[0][0],q[0][1], q[1][0],q[1][1],
-    q[1][0],q[1][1], q[2][0],q[2][1],
-    q[2][0],q[2][1], q[3][0],q[3][1],
-    q[3][0],q[3][1], q[0][0],q[0][1]
-  );
-    node.children.forEach(child => { if (child) collect(child); });
-  })(tree);
-
+  for (const L of leaves) {
+    const q = L.quad.map(([x, y]) => worldToNdc(x, y));
+    verts.push(
+      q[0][0], q[0][1], q[1][0], q[1][1],
+      q[1][0], q[1][1], q[2][0], q[2][1],
+      q[2][0], q[2][1], q[3][0], q[3][1],
+      q[3][0], q[3][1], q[0][0], q[0][1]
+    );
+  }
   treeBoxVerts = verts.length / 2;
   gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.STATIC_DRAW);
-
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
 }
 
 function renderSinglePass(quick, shouldClear) {
   const luminous = renderMode === "luminous" && luminousSupported;
 
+  if (scene.count === 0) {
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    return;
+  }
+
   if (!luminous && shouldClear) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   }
 
   gl.useProgram(program);
-  
-  // Create VAO if needed
-  if (!vao) {
-    vao = gl.createVertexArray();
+
+  // stratified point allocation across prefixes with randomized rounding:
+  // E[count] = weight * N exactly, so luminous brightness stays unbiased
+  // and no cell is starved no matter how small its weight
+  const N = quick
+    ? QUICK_MAX_POINTS
+    : luminous
+      ? luminousPassPoints
+      : passPoints;
+  const weights = luminous ? scene.wLum : scene.wOpq;
+  let total = 0;
+  for (let p = 0; p < scene.count; p++) {
+    cumTexels[p * 4] = total;
+    total += Math.floor(weights[p] * N + Math.random());
   }
+  if (total === 0) total = 1;
 
-  // PROJECTION MATRIX
-  const aspectRatio = canvas.width / canvas.height;
-
-  if (canvas.width > canvas.height) {
-    mat4.ortho(projectionMatrix, -aspectRatio, aspectRatio, -1, 1, -1, 1);
-  } else {
-    mat4.ortho(
-      projectionMatrix,
-      -1,
-      1,
-      -1 / aspectRatio,
-      1 / aspectRatio,
-      -1,
-      1
-    );
-  }
-  mat4.multiply(projectionMatrix, projectionMatrix, perspective);
-
-  // Set the projection matrix uniform
-  const uProjectionMatrixLoc = gl.getUniformLocation(
-    program,
-    "uProjectionMatrix"
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, prefixTex);
+  gl.texSubImage2D(
+    gl.TEXTURE_2D, 0, 0, 2, scene.count, 1,
+    gl.RGBA, gl.FLOAT, cumTexels.subarray(0, scene.count * 4)
   );
-  gl.uniformMatrix4fv(uProjectionMatrixLoc, false, projectionMatrix);
-
-  // POINT AND INDEX BUFFERS
-  const num_points = quick ? QUICK_MAX_POINTS : MAX_POINTS;
-  const point_size = quick ? QUICK_POINT_SIZE : POINT_SIZE;
-  const sphere_radius = quick ? QUICK_SPHERE_RADIUS : SPHERE_RADIUS;
-  const recursion_level = quick ? 20 : 50;
-  
-  // If the number of points has changed, update the buffer
-  if (num_points != bufferedNumPoints) {
-    const vertexData = [];
-    const indexData = [];
-    for (let i = 0; i < num_points; i++) {
-      // Just use a single position for each point (0,0) since they'll be transformed anyway
-      vertexData.push(0.0, 0.0);
-      indexData.push(i);
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(vertexData),
-      gl.STATIC_DRAW
-    );
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(indexData), gl.STATIC_DRAW);
-
-    bufferedNumPoints = num_points;
-    
-    // Set up VAO when buffers change
-    gl.bindVertexArray(vao);
-    
-    const positionLocation = gl.getAttribLocation(program, "aPosition");
-    if (positionLocation >= 0) {
-      gl.enableVertexAttribArray(positionLocation);
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-    }
-
-    const indexLocation = gl.getAttribLocation(program, "aIndex");
-    if (indexLocation >= 0) {
-      gl.enableVertexAttribArray(indexLocation);
-      gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
-      gl.vertexAttribPointer(indexLocation, 1, gl.FLOAT, false, 0, 0);
-    }
-    
-    gl.bindVertexArray(null);
-  }
-  
-  const numTransforms = transforms.length;
-
-  // Set the uNumTransforms uniform
-  setUniform1f("uNumTransforms", numTransforms);
-
-  // Identity matrix
-  const I = {
-    origin: [0, 0, 0],
-    degrees_rotation: 0,
-    rotation_axis: [0, 0, 1],
-    x_scale: 1,
-    y_scale: 1,
-    z_scale: 1,
-    color: [1, 1, 1, 1],
-  };
-
-  let determinants = [];
-
-  for (let i = 0; i < transforms.length; i++) {
-    let t = transforms[i];
-    let determinant = t.x_scale * t.y_scale * t.z_scale;
-    determinants.push(determinant);
-  }
-
-  // the shader samples chains in reverse time order, so it needs the
-  // distribution over PREDECESSORS of each state: transpose the matrix
-  const transposed_matrix = transition_matrix.map((row, i) =>
-    row.map((_, j) => transition_matrix[j][i])
-  );
-  let cumulative_markov_matrix = getCumulativeMarkovMatrix(
-    determinants,
-    transposed_matrix
-  );
-
-  const cumulativeMarkovMatrixLoc = gl.getUniformLocation(
-    program,
-    `uCumulativeMarkovMatrix`
-  );
-  gl.uniform1fv(cumulativeMarkovMatrixLoc, cumulative_markov_matrix);
-
-  let flattenedTransforms = [];
-  let flattenedColors = [];
-
-  for (let i = 0; i < 10; i++) {
-    const transform = i < numTransforms ? transforms[i] : I;
-    const affine = getAffineTransform3D(transform);
-
-    flattenedTransforms = flattenedTransforms.concat(Array.from(affine));
-    flattenedColors = flattenedColors.concat(transform.color);
-  }
-
-  const transformLoc = gl.getUniformLocation(program, `uTransforms`);
-  const colorLoc = gl.getUniformLocation(program, `uColors`);
-  gl.uniformMatrix4fv(transformLoc, false, flattenedTransforms);
-  gl.uniform4fv(colorLoc, flattenedColors);
-
-  setUniform1f("uN", num_points);
-  setUniform1f("uR", recursion_level);
-  setUniform1f("uSphereRadius", sphere_radius);
-  
-  // Set the pass count uniform for randomization
-  setUniform1f("uPassCount", currentPassCount);
-  setUniform1f("uPointSize", point_size);
-
+  gl.uniform1i(loc.prefixTex, 1);
+  gl.uniform1ui(loc.pass, currentPassCount >>> 0);
+  gl.uniform1f(loc.pointSize, quick ? QUICK_POINT_SIZE : POINT_SIZE);
 
   if (luminous) {
-    // accumulate points additively into the float buffer
     ensureAccumBuffers();
     gl.bindFramebuffer(gl.FRAMEBUFFER, accumFBO);
     if (shouldClear || accumNeedsClear) {
@@ -674,10 +597,14 @@ function renderSinglePass(quick, shouldClear) {
   }
 
   gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-
-  // Bind the VAO and draw
   gl.bindVertexArray(vao);
-  gl.drawArrays(gl.POINTS, 0, num_points); // Draw N points as simple points
+  gl.drawArrays(gl.POINTS, 0, total);
+  totalPointsDrawn += total;
+  window.renderStats = Object.assign(window.renderStats || {}, {
+    passes: currentPassCount + 1,
+    pointsPerPass: total,
+    totalPoints: totalPointsDrawn,
+  });
 
   if (luminous) {
     gl.disable(gl.BLEND);
@@ -699,33 +626,30 @@ function renderSinglePass(quick, shouldClear) {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.enable(gl.DEPTH_TEST);
   }
-  // ───── draw debug overlays (if enabled and any) ─────
-  if (overlayEnabled && (viewBoxVerts + treeBoxVerts) > 0) {
-    gl.useProgram(bboxProg);
-    gl.uniformMatrix4fv(bboxProjLoc, false, projectionMatrix);
-    gl.disable(gl.DEPTH_TEST);   // paint on top
 
-    // (a) tree boxes  — cyan
+  // ───── debug overlays ─────
+  if (overlayEnabled && viewBoxVerts + treeBoxVerts > 0) {
+    gl.useProgram(bboxProg);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindVertexArray(null);
+
     if (treeBoxVerts > 0) {
-      gl.uniform4fv(bboxColorLoc, [0.0, 1.0, 1.0, 0.8]); // cyan, 80 %
+      gl.uniform4fv(bboxColorLoc, [0.0, 1.0, 1.0, 0.8]);
       gl.bindBuffer(gl.ARRAY_BUFFER, treeBoxVBO);
       gl.enableVertexAttribArray(bboxPosLoc);
       gl.vertexAttribPointer(bboxPosLoc, 2, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, treeBoxVerts);
     }
-
-    // (b) view window — yellow
     if (viewBoxVerts > 0) {
-      gl.uniform4fv(bboxColorLoc, [1.0, 1.0, 0.0, 1.0]); // solid yellow
+      gl.uniform4fv(bboxColorLoc, [1.0, 1.0, 0.0, 1.0]);
       gl.bindBuffer(gl.ARRAY_BUFFER, viewBoxVBO);
       gl.enableVertexAttribArray(bboxPosLoc);
       gl.vertexAttribPointer(bboxPosLoc, 2, gl.FLOAT, false, 0, 0);
       gl.drawArrays(gl.LINES, 0, viewBoxVerts);
     }
-
     gl.disableVertexAttribArray(bboxPosLoc);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    gl.enable(gl.DEPTH_TEST);    // restore
+    gl.enable(gl.DEPTH_TEST);
   }
 
   gl.bindVertexArray(null);
@@ -738,14 +662,12 @@ function resizeCanvas() {
 
   gl.viewport(0, 0, canvas.width, canvas.height);
 
-  // Stop progressive rendering on resize and do a single clear render
   isProgressiveMode = false;
   if (progressiveAnimationId !== null) {
     cancelAnimationFrame(progressiveAnimationId);
     progressiveAnimationId = null;
   }
-  
-  // Single render after resize
+
   currentPassCount = 0;
   drawScene(false);
 }

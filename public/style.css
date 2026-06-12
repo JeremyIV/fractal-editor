@@ -394,6 +394,16 @@ input[type="number"] {
   margin-top: 8px;
 }
 
+.full-btn {
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
 .load-header {
   display: flex;
   align-items: center;

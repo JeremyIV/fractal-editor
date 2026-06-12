@@ -411,15 +411,17 @@ document.addEventListener(
   { passive: false }
 );
 
-// console/test helper: jump the view to zoom z centered on world (cx, cy)
-window.setZoom = function (z, cx = 0, cy = 0) {
+// Jump the view to zoom z centered on world (cx, cy).
+// Also exposed on window as a console/test helper.
+function setView(z, cx = 0, cy = 0) {
   zoomLevel = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
   panX = -cx;
   panY = -cy;
   updatePerspectiveMatrix();
   repositionHandles();
   drawScene();
-};
+}
+window.setZoom = setView;
 
 function to_canvas_coords(webGL_coords) {
   // Create a 4D vector from the 3D coordinates for matrix multiplication
@@ -568,4 +570,10 @@ function setHandlesVisible(visible) {
 }
 window.addEventListener("resize", repositionHandles);
 
-export { createHandles, repositionHandles, recreateHandles, setHandlesVisible };
+export {
+  createHandles,
+  repositionHandles,
+  recreateHandles,
+  setHandlesVisible,
+  setView,
+};

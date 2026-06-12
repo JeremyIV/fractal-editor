@@ -70,6 +70,10 @@
           <button id="copy-link-btn" class="btn share-btn">🔗 Copy link to this fractal</button>
         </div>
         <div class="db-section">
+          <h3>Generate</h3>
+          <button id="random-fractal-btn" class="btn full-btn">🎲 Random fractal</button>
+        </div>
+        <div class="db-section">
           <div class="load-header">
             <h3>Browse</h3>
             <div class="sort-toggle" id="sort-toggle">
@@ -77,6 +81,13 @@
               <button data-sort="recent">Recent</button>
             </div>
           </div>
+          <input
+            type="text"
+            id="fractal-search"
+            class="search-input"
+            placeholder="Search by name..."
+            autocomplete="off"
+          />
           <div id="fractal-list">
             <!-- Fractal list will be populated here -->
           </div>

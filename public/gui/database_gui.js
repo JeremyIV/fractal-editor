@@ -9,10 +9,12 @@ import {
 } from "../database.js";
 import { toast } from "./toast.js";
 import { tutorialEvent } from "./tutorial.js";
+import { generateRandomFractal } from "../random_fractal.js";
 
 const panel = document.getElementById("database-gui");
 const openButton = document.getElementById("database-menu-toggle");
 const fractalListContainer = document.getElementById("fractal-list");
+const searchInput = document.getElementById("fractal-search");
 
 let currentSort = "popular";
 let cachedFractals = [];
@@ -153,11 +155,24 @@ function renderFractalList() {
     return;
   }
 
-  const favorites = cachedFractals.filter((f) => f.favorited);
+  const query = searchInput.value.trim().toLowerCase();
+  const visible = query
+    ? cachedFractals.filter((f) => f.name.toLowerCase().includes(query))
+    : cachedFractals;
+
+  if (visible.length === 0) {
+    const msg = document.createElement("div");
+    msg.className = "list-message";
+    msg.textContent = `No fractals match "${searchInput.value.trim()}"`;
+    fractalListContainer.appendChild(msg);
+    return;
+  }
+
+  const favorites = visible.filter((f) => f.favorited);
   if (favorites.length > 0) {
     appendSection("Your favorites", favorites);
   }
-  appendSection("All fractals", cachedFractals);
+  appendSection("All fractals", visible);
 }
 
 async function loadFractalList() {
@@ -199,6 +214,17 @@ async function saveFractal() {
     saveButton.textContent = "Save";
   }
 }
+
+// Live name search over the already-fetched list
+searchInput.addEventListener("input", renderFractalList);
+
+// Random fractal generation
+document
+  .getElementById("random-fractal-btn")
+  .addEventListener("click", () => {
+    generateRandomFractal();
+    toast("Generated a random fractal 🎲", "success");
+  });
 
 // Sort toggle
 document.querySelectorAll("#sort-toggle button").forEach((button) => {

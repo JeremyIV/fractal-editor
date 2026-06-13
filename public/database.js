@@ -1,7 +1,7 @@
 // Database functions for loading and saving fractals
 import { transforms, transition_matrix } from "./transforms.js";
 import { drawScene, getRenderMode } from "./renderer.js";
-import { recreateHandles } from "./gui/handles.js";
+import { recreateHandles, setView } from "./gui/handles.js";
 import { reRenderTransformForms } from "./gui/transforms_form.js";
 import { refreshTransitionMatrixUI } from "./gui/transition_matrix.js";
 import { setModeUI } from "./gui/render_mode.js";
@@ -113,6 +113,10 @@ async function load_fractal(id) {
   fractal.data.transition_matrix.forEach((row) => {
     transition_matrix.push([...row]);
   });
+
+  // Reset the viewport to the default so a loaded fractal is framed
+  // regardless of how far the previous one was zoomed/panned
+  setView(1, 0, 0);
 
   // Update all UI components for the new transforms
   setModeUI(fractal.data.render_mode === "luminous" ? "luminous" : "opaque");
